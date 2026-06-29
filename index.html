@@ -1260,11 +1260,11 @@
         if (!tbody) return;
         tbody.innerHTML = '';
 
-        // Memeriksa variabel mode aplikasi Anda
+        // Memeriksa variabel mode aplikasi 
         const mode = typeof currentMode !== 'undefined' ? currentMode : 'A';
 
         if (mode === 'B') {
-          // Proteksi jika nama variabel flat list Anda berbeda
+          // Proteksi jika nama variabel flat list berbeda
           if (typeof invoiceListFlat === 'undefined') {
             throw new ReferenceError("Variabel 'invoiceListFlat' tidak ditemukan. Silakan periksa apa nama variabel daftar invoice flat di file Anda.");
           }
@@ -1273,7 +1273,7 @@
             const invoiceNo = item.id;
             const isSusulan = item.isSusulan;
 
-            // Jalankan fungsi kalkulasi bawaan aplikasi Anda jika ada
+            // Jalankan fungsi kalkulasi bawaan aplikasi jika ada
             let total = 0;
             if (typeof extractAndCalculateRow === 'function') {
               const rowData = extractAndCalculateRow(item.row);
