@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faktur Penjualan - PT Belfoods Indonesia</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #e5e7eb; color: #111; font-size: 13px; }
+
+/* ===== APP SHELL ===== */
+.app-shell { display: flex; height: 100vh; }
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+  width: 280px; min-width: 280px;
+  background: #1e293b; color: #e2e8f0;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.sidebar-brand {
+  padding: 16px; background: #0f172a;
+  border-bottom: 2px solid #c41e3a;
+  font-size: 13px; font-weight: 700; color: #fff;
+}
+.sidebar-brand small { display: block; font-size: 10px; color: #94a3b8; font-weight: 400; margin-top: 2px; }
+.sidebar-section { padding: 14px 16px; border-bottom: 1px solid #334155; }
+.sidebar-section label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; display: block; margin-bottom: 8px; }
+
+.upload-zone {
+  border: 2px dashed #475569; border-radius: 6px; padding: 16px;
+  text-align: center; cursor: pointer; transition: 0.2s;
+  background: #0f172a;
+}
+.upload-zone:hover, .upload-zone.drag { border-color: #c41e3a; background: #1e0a0f; }
+.upload-zone .uicon { font-size: 22px; }
+.upload-zone p { font-size: 11px; color: #64748b; margin-top: 4px; }
+#fileInput { display: none; }
+
+select.sb-select {
+  width: 100%; padding: 7px 8px; border-radius: 5px;
+  background: #0f172a; color: #e2e8f0;
+  border: 1px solid #475569; font-size: 12px;
+}
+
+.status-msg { font-size: 11px; margin-top: 8px; padding: 5px 8px; border-radius: 4px; }
+.status-msg.ok  { background: #14532d; color: #bbf7d0; }
+.status-msg.err { background: #7f1d1d; color: #fecaca; }
+.status-msg.info{ background: #1e3a5f; color: #bfdbfe; }
+
+.inv-list { flex: 1; overflow-y: auto; }
+.inv-list-header { padding: 10px 16px 6px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; }
+.inv-item {
+  padding: 10px 16px; cursor: pointer; border-left: 3px solid transparent;
+  transition: 0.15s; border-bottom: 1px solid #1e293b;
+}
+.inv-item:hover { background: #0f172a; }
+.inv-item.active { background: #0f172a; border-left-color: #c41e3a; }
+.inv-item .inv-id  { font-size: 12px; font-weight: 700; color: #f1f5f9; }
+.inv-item .inv-sub { font-size: 10px; color: #64748b; margin-top: 2px; }
+.inv-item .inv-amt { font-size: 11px; color: #f87171; font-weight: 600; margin-top: 2px; }
+.badge { display: inline-block; background: #c41e3a; color: #fff; border-radius: 10px; font-size: 10px; padding: 1px 6px; margin-left: 6px; }
+
+/* ===== MAIN ===== */
+.main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+
+.topbar {
+  background: #fff; border-bottom: 1px solid #d1d5db;
+  padding: 10px 24px; display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap; position: sticky; top: 0; z-index: 10;
+}
+.topbar-title { font-size: 13px; font-weight: 700; color: #1e293b; flex: 1; }
+.btn { padding: 7px 16px; border-radius: 5px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; display: inline-flex; align-items: center; gap: 5px; }
+.btn-red  { background: #c41e3a; color: #fff; }
+.btn-red:hover  { background: #9b1528; }
+.btn-gray { background: #f1f5f9; color: #334155; border: 1px solid #d1d5db; }
+.btn-gray:hover { background: #e2e8f0; }
+
+.preview-wrap { flex: 1; padding: 24px; display: flex; justify-content: center; align-items: flex-start; }
+
+.empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #6b7280; }
+.empty-state .eicon { font-size: 52px; margin-bottom: 16px; }
+.empty-state h2 { font-size: 17px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.empty-state p { font-size: 13px; text-align: center; line-height: 1.6; }
+
+/* ===== FAKTUR LAYOUT ===== */
+#fakturWrap {
+  width: 750px;
+  background: #fff;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.13);
+  font-family: Arial, sans-serif;
+  font-size: 8.5pt;
+  color: #111;
+  padding: 12pt;
+}
+
+.fk-border { border: 1.5pt solid #000; padding: 10pt; }
+
+/* Header */
+.fk-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5pt; }
+.fk-company-name  { font-size: 13pt; font-weight: 700; }
+.fk-company-npwp  { font-size: 8pt; margin-top: 2pt; }
+.fk-company-addr  { font-size: 7.5pt; max-width: 300pt; line-height: 1.4; margin-top: 2pt; }
+.fk-title         { font-size: 14pt; font-weight: 700; letter-spacing: 0.5px; }
+
+/* Nomor faktur */
+.fk-nomor-row { display: flex; justify-content: flex-end; margin-bottom: 5pt; }
+.fk-nomor-inner { display: flex; align-items: center; gap: 6pt; font-size: 8.5pt; }
+.fk-nomor-val { font-weight: 700; border: 1pt solid #000; padding: 2pt 10pt; min-width: 160pt; }
+
+.fk-line { border-top: 1.5pt solid #000; margin: 4pt 0; }
+
+/* Info rows */
+.fk-row { display: flex; align-items: flex-start; margin-bottom: 2pt; font-size: 8pt; }
+.fk-row .lbl  { min-width: 90pt; flex-shrink: 0; }
+.fk-row .col  { min-width: 8pt;  flex-shrink: 0; }
+.fk-row .val  { flex: 1; font-weight: 600; word-break: break-word; }
+.fk-row .lbl2 { min-width: 80pt; flex-shrink: 0; margin-left: 10pt; }
+.fk-row .val2 { flex: 1; font-weight: 600; word-break: break-word; }
+
+/* Boxes */
+.fk-box       { border: 1pt solid #000; padding: 5pt; }
+.fk-box-hdr   { border: 1pt solid #000; padding: 3pt 5pt; font-weight: 700; font-size: 8pt; }
+.fk-box-notop { border: 1pt solid #000; border-top: none; padding: 5pt; }
+
+/* Table */
+.fk-tbl-hdr { border: 1pt solid #000; border-top: none; text-align: center; font-weight: 700; font-size: 8pt; padding: 3pt; }
+.fk-table { width: 100%; border-collapse: collapse; }
+.fk-table th, .fk-table td { border: 1pt solid #000; padding: 3pt 5pt; font-size: 7.5pt; vertical-align: middle; }
+.fk-table th { font-weight: 700; text-align: center; background: #f5f5f5; }
+.fk-table td.c  { text-align: center; }
+.fk-table td.r  { text-align: right; }
+
+/* Totals — label kiri, nilai kanan, dipisah kolom */
+.fk-totals { width: 100%; border-left: 1pt solid #000; border-right: 1pt solid #000; border-bottom: 1pt solid #000; }
+.fk-tot-row { display: flex; border-top: 1pt solid #000; font-size: 7.5pt; }
+.fk-tot-row .t-lbl { flex: 1; padding: 3pt 5pt; }
+.fk-tot-row .t-val { min-width: 100pt; padding: 3pt 5pt; text-align: right; border-left: 1pt solid #000; font-weight: 600; }
+.fk-tot-row.bold .t-lbl,
+.fk-tot-row.bold .t-val { font-weight: 700; background: #f0f0f0; }
+
+/* Bottom */
+.fk-bottom { display: flex; margin-top: 6pt; }
+.fk-syarat { flex: 1; border: 1pt solid #000; padding: 6pt; font-size: 8pt; }
+.fk-syarat .sy-title { font-weight: 700; margin-bottom: 4pt; }
+.fk-sign   { width: 140pt; flex-shrink: 0; border: 1pt solid #000; border-left: none; padding: 5pt; text-align: center; font-size: 8pt; }
+.fk-sign .sign-line { height: 50pt; border-bottom: 1pt solid #000; margin: 6pt 0 4pt; }
+.fk-sign .sign-role { font-weight: 700; }
+
+.fk-notes { margin-top: 5pt; font-size: 7pt; line-height: 1.6; color: #444; }
+
+/* ===== PRINT ===== */
+@media print {
+  body { background: white; }
+  .app-shell { display: block; }
+  .sidebar, .topbar { display: none !important; }
+  .main { overflow: visible; }
+  .preview-wrap { padding: 0; display: block; }
+  #fakturWrap { width: 100%; box-shadow: none; padding: 0; }
+  @page { size: A4; margin: 10mm; }
+}
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-brand">
+      🧾 Cetak Faktur Penjualan
+      <small>PT Belfoods Indonesia</small>
+    </div>
+
+    <div class="sidebar-section">
+      <label>1. Upload File Excel</label>
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+        <div class="uicon">📂</div>
+        <p>Klik atau drag & drop<br>.xlsx / .xls</p>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFile(event)">
+      <div id="uploadStatus"></div>
+    </div>
+
+    <div class="sidebar-section" id="sheetSec" style="display:none">
+      <label>2. Pilih Sheet</label>
+      <select class="sb-select" id="sheetSel" onchange="loadSheet()"></select>
+    </div>
+
+    <div class="inv-list-header">Daftar Invoice <span id="invBadge" class="badge" style="display:none"></span></div>
+    <div class="inv-list" id="invList">
+      <div style="padding:16px; font-size:11px; color:#475569;">Belum ada data.</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main" id="mainArea">
+    <div class="empty-state">
+      <div class="eicon">🧾</div>
+      <h2>Selamat Datang</h2>
+      <p>Upload file Excel lalu pilih invoice<br>untuk melihat preview faktur.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let wb = null;
+let invoiceMap = {};
+let currentId = null;
+
+// ============================================================
+// DRAG & DROP
+// ============================================================
+const uz = document.getElementById('uploadZone');
+uz.addEventListener('dragover', e => { e.preventDefault(); uz.classList.add('drag'); });
+uz.addEventListener('dragleave', () => uz.classList.remove('drag'));
+uz.addEventListener('drop', e => {
+  e.preventDefault(); uz.classList.remove('drag');
+  if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+});
+function handleFile(e) { if (e.target.files[0]) processFile(e.target.files[0]); }
+
+// ============================================================
+// PROCESS FILE
+// ============================================================
+function processFile(file) {
+  setStatus('info', '📂 Membaca file...');
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      wb = XLSX.read(ev.target.result, { type: 'array', cellDates: true });
+      const sel = document.getElementById('sheetSel');
+      sel.innerHTML = '';
+      wb.SheetNames.forEach(s => {
+        const o = document.createElement('option');
+        o.value = s; o.textContent = s;
+        if (s === 'D.Sample (2)') o.selected = true;
+        sel.appendChild(o);
+      });
+      document.getElementById('sheetSec').style.display = 'block';
+      setStatus('ok', '✅ ' + file.name);
+      loadSheet();
+    } catch(err) {
+      setStatus('err', '❌ Gagal: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ============================================================
+// LOAD SHEET — pastikan nilai numerik terbaca dengan benar
+// ============================================================
+function loadSheet() {
+  if (!wb) return;
+  const sn = document.getElementById('sheetSel').value;
+  const ws = wb.Sheets[sn];
+
+  // raw: true supaya kita dapat nilai asli (number, string, date)
+  const rows = XLSX.utils.sheet_to_json(ws, { defval: null, raw: true });
+
+  if (!rows.length) { setStatus('err', '❌ Sheet kosong'); return; }
+
+  // Debug: log kolom dan sample row pertama ke console
+  console.log('Columns:', Object.keys(rows[0]));
+  console.log('Row[0]:', rows[0]);
+
+  // Group by Invoice
+  invoiceMap = {};
+  rows.forEach(r => {
+    // Cari key Invoice (case-insensitive fallback)
+    const id = r['Invoice'] || r['invoice'] || r['INVOICE'] || 'UNKNOWN';
+    if (!invoiceMap[id]) invoiceMap[id] = [];
+    invoiceMap[id].push(r);
+  });
+
+  renderList();
+  const total = rows.length;
+  const invCount = Object.keys(invoiceMap).length;
+  setStatus('ok', `✅ ${total} baris · ${invCount} invoice`);
+}
+
+// ============================================================
+// SIDEBAR LIST
+// ============================================================
+function renderList() {
+  const ids = Object.keys(invoiceMap);
+  const badge = document.getElementById('invBadge');
+  badge.textContent = ids.length; badge.style.display = 'inline';
+
+  const list = document.getElementById('invList');
+  list.innerHTML = '';
+  ids.forEach(id => {
+    const rows = invoiceMap[id];
+    const first = rows[0];
+    const total = rows.reduce((s, r) => s + getNum(r, 'Nominal'), 0);
+    const div = document.createElement('div');
+    div.className = 'inv-item';
+    div.innerHTML = `
+      <div class="inv-id">${id}</div>
+      <div class="inv-sub">${first['Nama'] || ''} · ${rows.length} item</div>
+      <div class="inv-amt">${fmtRp(total)}</div>
+    `;
+    div.onclick = () => {
+      document.querySelectorAll('.inv-item').forEach(x => x.classList.remove('active'));
+      div.classList.add('active');
+      renderFaktur(id);
+    };
+    list.appendChild(div);
+  });
+
+  if (ids.length > 0) list.querySelector('.inv-item').click();
+}
+
+// ============================================================
+// HELPER: ambil nilai numerik dari row dengan key yang fleksibel
+// ============================================================
+function getNum(row, key) {
+  // Coba exact match dulu
+  let v = row[key];
+  // Kalau null/undefined, coba case-insensitive
+  if (v == null) {
+    const lk = key.toLowerCase();
+    for (const k of Object.keys(row)) {
+      if (k.toLowerCase() === lk) { v = row[k]; break; }
+    }
+  }
+  if (v == null || v === '') return 0;
+  const n = parseFloat(String(v).replace(/,/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+function getStr(row, key) {
+  let v = row[key];
+  if (v == null) {
+    const lk = key.toLowerCase();
+    for (const k of Object.keys(row)) {
+      if (k.toLowerCase() === lk) { v = row[k]; break; }
+    }
+  }
+  return v != null ? String(v) : '';
+}
+
+// ============================================================
+// RENDER FAKTUR — layout 1:1 PDF
+// ============================================================
+function renderFaktur(id) {
+  currentId = id;
+  const rows = invoiceMap[id];
+  const f    = rows[0];
+
+  const invoiceNo    = getStr(f, 'Invoice');
+  const sjNo         = getStr(f, 'Surat Jalan');
+  const soNo         = getStr(f, 'Sales Order');
+  const poNo         = getStr(f, 'No PO');
+  const noKend       = getStr(f, 'No Kendaraan');
+  const nama         = getStr(f, 'Nama');
+  const alamat       = getStr(f, 'Alamat');
+  const npwp         = getStr(f, 'NPWP');
+  const tujuanNama   = getStr(f, 'Tujuh Nama Pengiriman');
+  const tujuanAlamat = getStr(f, 'Alamat Pengiriman');
+  const tglRaw       = f['Date'] || '';
+  const tglStr       = fmtDate(tglRaw);
+
+  // Hitung total
+  const totHJ      = rows.reduce((s, r) => s + getNum(r, 'DPP Commercial'), 0);
+  const totDPPCom  = totHJ;
+  const totDPPFis  = rows.reduce((s, r) => s + getNum(r, 'DPP Fiscal'), 0);
+  const totPPN     = rows.reduce((s, r) => s + getNum(r, 'PPN'), 0);
+  const totBayar   = rows.reduce((s, r) => s + getNum(r, 'Nominal'), 0);
+
+  // Baris tabel item
+  let tableRows = '';
+  rows.forEach((r, i) => {
+    const qty   = getNum(r, 'Qty Ctn/pack');
+    const hSat  = getNum(r, 'Price');
+    const hJual = getNum(r, 'DPP Commercial');
+    tableRows += `
+      <tr>
+        <td class="c">${i + 1}</td>
+        <td>${getStr(r, 'Item')}</td>
+        <td>${getStr(r, 'Nama barang')}</td>
+        <td class="c">${fmtNum(qty)}</td>
+        <td class="c">${getStr(r, 'Unit')}</td>
+        <td class="r">${fmtNum(hSat)}</td>
+        <td class="r">${fmtNum(hJual)}</td>
+      </tr>`;
+  });
+
+  const html = `
+  <div class="topbar">
+    <span class="topbar-title">Faktur: ${invoiceNo}</span>
+    <button class="btn btn-gray" onclick="window.print()">🖨️ Print / Simpan PDF</button>
+  </div>
+  <div class="preview-wrap">
+  <div id="fakturWrap">
+  <div class="fk-border">
+
+    <!-- ── HEADER ── -->
+    <div class="fk-header">
+      <div>
+        <div class="fk-company-name">PT Belfoods Indonesia</div>
+        <div class="fk-company-npwp">01.638.442.2-062.000</div>
+        <div class="fk-company-addr">Sequis Tower Lantai 40, Jl Jenderal Sudirman Kav. 71, Senayan, Kebayoran Baru, Kota Adm. Jakarta Selatan</div>
+      </div>
+      <div>
+        <div class="fk-title">FAKTUR PENJUALAN</div>
+      </div>
+    </div>
+
+    <!-- ── NOMOR FAKTUR ── -->
+    <div class="fk-nomor-row">
+      <div class="fk-nomor-inner">
+        <span>Nomor Faktur Penjualan</span>
+        <span style="font-weight:700;">:</span>
+        <span class="fk-nomor-val">${invoiceNo}</span>
+      </div>
+    </div>
+
+    <div class="fk-line"></div>
+
+    <!-- ── INFO DOKUMEN ── -->
+    <div style="margin-bottom:4pt;">
+      <div class="fk-row">
+        <span class="lbl">Nomor SJ</span><span class="col">:</span><span class="val">${sjNo}</span>
+        <span class="lbl2">Nomor PO</span><span class="col">:</span><span class="val2">${poNo}</span>
+      </div>
+      <div class="fk-row">
+        <span class="lbl">Nomor SO</span><span class="col">:</span><span class="val">${soNo}</span>
+        <span class="lbl2">Nomor Kendaraan</span><span class="col">:</span><span class="val2">${noKend}</span>
+      </div>
+    </div>
+
+    <!-- ── PEMBELI ── -->
+    <div class="fk-box-hdr">Pembeli Barang Kena Pajak / Penerima Jasa Kena Pajak</div>
+    <div class="fk-box-notop" style="margin-bottom:0;">
+      <div class="fk-row"><span class="lbl" style="min-width:60pt;">Nama</span><span class="col">:</span><span class="val">${nama}</span></div>
+      <div class="fk-row"><span class="lbl" style="min-width:60pt;">Alamat</span><span class="col">:</span><span class="val">${alamat}</span></div>
+      <div class="fk-row"><span class="lbl" style="min-width:60pt;">NPWP</span><span class="col">:</span><span class="val">${npwp}</span></div>
+    </div>
+
+    <!-- ── TUJUAN PENGIRIMAN ── -->
+    <div class="fk-box-notop" style="margin-bottom:0;">
+      <div class="fk-row"><span class="lbl" style="min-width:110pt;">Tujuan Nama Pengiriman</span><span class="col">:</span><span class="val">${tujuanNama}</span></div>
+      <div class="fk-row"><span class="lbl" style="min-width:110pt;">Alamat Pengiriman</span><span class="col">:</span><span class="val">${tujuanAlamat}</span></div>
+    </div>
+
+    <!-- ── SECTION HEADER TABEL ── -->
+    <div class="fk-tbl-hdr">Nama Barang Kena Pajak / Jasa Kena Pajak</div>
+
+    <!-- ── TABEL ITEM ── -->
+    <table class="fk-table">
+      <thead>
+        <tr>
+          <th rowspan="2" style="width:20pt;">No</th>
+          <th rowspan="2" style="width:70pt;">Kode Barang</th>
+          <th rowspan="2">Nama Barang</th>
+          <th rowspan="2" style="width:38pt;">Kuantitas</th>
+          <th rowspan="2" style="width:28pt;">Satuan</th>
+          <th rowspan="2" style="width:75pt;">Harga Satuan<br><small style="font-weight:400;">Rp.</small></th>
+          <th style="width:90pt;">Harga Jual /<br>Penggantian /<br>Uang Muka / Termin<br><small style="font-weight:400;">Rp.</small></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${tableRows}
+      </tbody>
+    </table>
+
+    <!-- ── TOTALS (label + nilai berdampingan) ── -->
+    <div class="fk-totals">
+      <div class="fk-tot-row">
+        <div class="t-lbl">Harga Jual / Penggantian / Uang Muka / Termin *)</div>
+        <div class="t-val">${fmtNum(totHJ)}</div>
+      </div>
+      <div class="fk-tot-row">
+        <div class="t-lbl">Dikurangi Potongan Harga (Objek PPN)</div>
+        <div class="t-val">0,00</div>
+      </div>
+      <div class="fk-tot-row">
+        <div class="t-lbl">Dikurangi Potongan Harga (Non Objek PPN)</div>
+        <div class="t-val">0,00</div>
+      </div>
+      <div class="fk-tot-row">
+        <div class="t-lbl">Dikurangi Uang Muka Yang Telah Diterima</div>
+        <div class="t-val">0,00</div>
+      </div>
+      <div class="fk-tot-row">
+        <div class="t-lbl">Jumlah potongan &amp; / uang muka</div>
+        <div class="t-val">0,00</div>
+      </div>
+      <div class="fk-tot-row">
+        <div class="t-lbl">DPP Komersial</div>
+        <div class="t-val">${fmtNum(totDPPCom)}</div>
+      </div>
+      <div class="fk-tot-row">
+        <div class="t-lbl">DPP Fiskal</div>
+        <div class="t-val">${fmtNum(totDPPFis)}</div>
+      </div>
+      <div class="fk-tot-row">
+        <div class="t-lbl">PPN = 12 % x DPP Fiskal</div>
+        <div class="t-val">${fmtNum(totPPN)}</div>
+      </div>
+      <div class="fk-tot-row">
+        <div class="t-lbl">DPP PPN Dibebaskan</div>
+        <div class="t-val">0,00</div>
+      </div>
+      <div class="fk-tot-row bold">
+        <div class="t-lbl">Jumlah Yang Harus Dibayar</div>
+        <div class="t-val">${fmtNum(totBayar)}</div>
+      </div>
+    </div>
+
+    <!-- ── SYARAT + TTD ── -->
+    <div class="fk-bottom">
+      <div class="fk-syarat">
+        <div class="sy-title">Syarat Pembayaran</div>
+        <div class="fk-row" style="margin-top:4pt;">
+          <span class="lbl">Tgl. Jatuh Tempo</span><span class="col">:</span><span class="val"></span>
+        </div>
+        <div style="margin-top:10pt; font-size:7.5pt; color:#666;">*) Coret yang tidak perlu</div>
+        <div style="margin-top:10pt;">
+          <div style="font-weight:700; font-size:8pt; margin-bottom:3pt;">Catatan</div>
+          <div style="font-size:7.5pt;">Harap ditransfer ke bank :</div>
+        </div>
+      </div>
+      <div class="fk-sign">
+        <div style="font-size:7.5pt; margin-bottom:2pt;">Jakarta, ${tglStr}</div>
+        <div class="sign-line"></div>
+        <div class="sign-role">Accounting Manager</div>
+      </div>
+    </div>
+
+    <!-- ── CATATAN ── -->
+    <div class="fk-notes">
+      <p>1. Keterlambatan pembayaran akan dikenakan denda / penalty sebesar 2 % / bulan terhitung sejak tanggal jatuh tempo pembayaran diatas atau berdasarkan surat perjanjian yang berlaku.</p>
+      <p>2. Pembayaran hanya dapat dilakukan melalui rekening Virtual Account sebagaimana tercantum di atas. Mohon tidak melakukan transfer ke rekening lain guna menghindari keterlambatan dalam pencatatan pembayaran.</p>
+    </div>
+
+  </div><!-- fk-border -->
+  </div><!-- fakturWrap -->
+  </div><!-- preview-wrap -->
+  `;
+
+  document.getElementById('mainArea').innerHTML = html;
+}
+
+// ============================================================
+// FORMAT HELPERS
+// ============================================================
+function fmtNum(v) {
+  if (v == null || v === '' || isNaN(v)) return '0,00';
+  return Number(v).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtRp(v) { return 'Rp ' + fmtNum(v); }
+function fmtDate(v) {
+  if (!v) return '';
+  const d = (v instanceof Date) ? v : new Date(v);
+  if (isNaN(d)) return String(v);
+  const M = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  return `${String(d.getDate()).padStart(2,'0')} ${M[d.getMonth()]} ${d.getFullYear()}`;
+}
+function setStatus(type, msg) {
+  document.getElementById('uploadStatus').innerHTML = `<div class="status-msg ${type}">${msg}</div>`;
+}
+</script>
+</body>
+</html>

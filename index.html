@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aplikasi Cetak Invoice - Ihwanul Hakim</title>
+
+  <meta name="description" content="Aplikasi berbasis web untuk mencetak faktur penjualan otomatis dari file Excel.">
+  <meta name="author" content="Ihwanul Hakim">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Aplikasi Cetak Invoice - Ihwanul Hakim">
+  <meta property="og:description" content="Cetak faktur penjualan otomatis dengan mudah dan cepat.">
+  <meta property="og:image" content="https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=600&auto=format&fit=crop">
+
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧾</text></svg>">
+
+  <!-- Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <!-- Tailwind Play CDN — acceptable for single-file app without build step -->
+  <script>
+    window.tailwind = window.tailwind || {};
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            red: { DEFAULT: '#C41E3A', dark: '#9B1528', light: '#F9E8EB' },
+            gray: { 900: '#1A1A2E', 700: '#374151', 500: '#6B7280', 300: '#D1D5DB', 100: '#F3F4F6' },
+            accent: { DEFAULT: '#F59E0B', hover: '#D97706' }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 0mm;
+      }
+
+      body {
+        margin: 0;
+        background: white !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .page {
+        box-shadow: none !important;
+        padding: 10mm 15mm !important;
+        width: 210mm !important;
+        height: 297mm !important;
+        max-height: 297mm !important;
+        box-sizing: border-box !important;
+        border: none !important;
+        margin: 0 auto !important;
+        page-break-after: always;
+        page-break-inside: avoid;
+        overflow: hidden;
+      }
+
+      .page:last-child {
+        page-break-after: auto;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+    }
+
+    .divider {
+      border-top: 1px solid #1f2937;
+      width: 100%;
+    }
+
+    #searchInput::placeholder {
+      color: #9CA3AF;
+    }
+
+    .invoice-item.hidden-by-search {
+      display: none;
+    }
+
+    #searchClear {
+      transition: opacity 0.15s;
+    }
+
+    #noSearchResult {
+      display: none;
+    }
+
+    #noSearchResult.visible {
+      display: block;
+    }
+
+    /* Modal */
+    #confirmModal {
+      display: none;
+    }
+
+    #confirmModal.visible {
+      display: flex;
+    }
+
+    /* Mode toggle */
+    .mode-btn {
+      transition: all 0.15s;
+    }
+
+    .mode-btn.active {
+      background: #C41E3A;
+      color: white;
+      border-color: #C41E3A;
+    }
+
+    .mode-btn:not(.active) {
+      background: white;
+      color: #374151;
+      border-color: #D1D5DB;
+    }
+
+    .mode-btn:not(.active):hover {
+      border-color: #C41E3A;
+      color: #C41E3A;
+    }
+
+    /* IndexedDB status badge */
+    #dbBadge {
+      transition: opacity 0.3s;
+    }
+  </style>
+</head>
+
+<body class="font-sans bg-gray-100 text-gray-700 min-h-screen">
+
+  <!-- Header -->
+  <div
+    class="bg-[#1e293b] text-white pl-2 pr-8 flex items-center justify-between h-[60px] border-b-[3px] border-red no-print">
+    <h1 class="text-base font-bold tracking-wide">🧾 Aplikasi Cetak Faktur Penjualan Versi 1</h1>
+    <div class="flex items-center gap-3">
+      <div id="dbBadge"
+        class="hidden items-center gap-1.5 text-[11px] bg-white/10 border border-white/20 rounded-full px-3 py-1">
+        <span class="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>
+        <span id="dbBadgeText" class="text-white/80"></span>
+        <button onclick="confirmClearDB()" class="ml-1 text-white/40 hover:text-red text-[13px] leading-none"
+          title="Hapus file tersimpan">✕</button>
+      </div>
+      <span class="text-xs text-gray-300">Widia Putri Audia_ft_Ihwanul Hakim</span>
+    </div>
+  </div>
+
+  <!-- Notification toast -->
+  <div id="notif"
+    class="fixed bottom-6 right-6 px-5 py-3 rounded-lg text-sm font-semibold shadow-xl z-[9999] translate-y-24 opacity-0 transition-all duration-300 text-white">
+  </div>
+
+  <!-- Loading overlay -->
+  <div id="loadingOverlay"
+    class="fixed inset-0 bg-[#1e293b]/80 backdrop-blur-sm z-[9998] hidden flex-col items-center justify-center gap-4 no-print">
+    <div class="relative w-14 h-14">
+      <svg class="animate-spin w-14 h-14" viewBox="0 0 56 56" fill="none">
+        <circle cx="28" cy="28" r="24" stroke="white" stroke-opacity="0.15" stroke-width="5" />
+        <path d="M28 4a24 24 0 0 1 24 24" stroke="#C41E3A" stroke-width="5" stroke-linecap="round" />
+      </svg>
+      <span class="absolute inset-0 flex items-center justify-center text-xl">🧾</span>
+    </div>
+    <div class="text-center w-72">
+      <div id="loadingTitle" class="text-white font-bold text-sm mb-1">Memuat data...</div>
+      <div id="loadingSubtitle" class="text-white/50 text-xs mb-3"></div>
+      <!-- Progress bar (hidden by default, shown only for bulk ZIP) -->
+      <div id="loadingProgressWrap" class="hidden">
+        <div class="w-full bg-white/10 rounded-full h-2 mb-2">
+          <div id="loadingProgressBar" class="bg-red h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+        </div>
+        <div id="loadingProgressText" class="text-white/60 text-[11px]"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div id="confirmModal" class="fixed inset-0 bg-black/50 z-50 items-center justify-center no-print">
+    <div class="bg-white rounded-xl shadow-2xl p-6 max-w-sm mx-4 w-full">
+      <div class="text-2xl mb-3 text-center">⚠️</div>
+      <h3 id="modalTitle" class="font-bold text-gray-900 text-center mb-2 text-sm"></h3>
+      <p id="modalMsg" class="text-gray-500 text-[13px] text-center mb-5 leading-relaxed"></p>
+      <div class="flex gap-2">
+        <button id="modalCancel" onclick="closeModal()"
+          class="flex-1 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Batal</button>
+        <button id="modalConfirm"
+          class="flex-1 py-2 rounded-lg bg-red text-white text-sm font-semibold hover:bg-red-dark transition"></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex h-[calc(100vh-60px)] no-print">
+
+    <!-- Sidebar -->
+    <div class="w-80 bg-white border-r border-gray-300 flex flex-col overflow-hidden shrink-0">
+
+      <!-- Upload -->
+      <div class="p-4 border-b border-gray-100">
+        <h3 class="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-3">1. Upload File Excel</h3>
+        <div id="uploadZone"
+          class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer transition-all duration-200 bg-gray-100 hover:border-red hover:bg-red-light"
+          onclick="document.getElementById('fileInput').click()">
+          <div class="text-2xl mb-1">📂</div>
+          <strong class="text-[12px] text-gray-700 block mb-0.5">Klik atau Drag & Drop</strong>
+          <p class="text-[11px] text-gray-500">Format: .xlsx, .xls</p>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" class="hidden" onchange="handleFileUpload(event)">
+        <div id="uploadStatus" class="mt-2"></div>
+      </div>
+
+      <!-- Sheet selector -->
+      <div id="sheetSection" class="p-4 border-b border-gray-100 hidden">
+        <h3 class="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-3">2. Pilih Sheet</h3>
+        <select id="sheetSelect" onchange="loadSheet()"
+          class="w-full p-2 border border-gray-300 rounded-md text-[13px] focus:outline-none focus:border-red bg-white"></select>
+      </div>
+
+      <!-- Search -->
+      <div id="searchSection" class="px-3 pt-3 pb-2 border-b border-gray-100 hidden">
+        <h3 class="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Cari Invoice</h3>
+        <select id="searchFilter" onchange="filterInvoices()"
+          class="w-full mb-2 p-1.5 border border-gray-300 rounded-md text-[12px] focus:outline-none focus:border-red bg-white text-gray-700">
+          <option value="invoice">Nomor Faktur Penjualan</option>
+          <option value="nama">Nama Customer</option>
+          <option value="total">Total Harga</option>
+          <option value="item">Jumlah Item</option>
+        </select>
+        <div class="relative">
+          <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[13px] pointer-events-none">🔍</span>
+          <input id="searchInput" type="text" placeholder="Ketik untuk mencari..." oninput="filterInvoices()"
+            class="w-full pl-7 pr-7 py-1.5 border border-gray-300 rounded-md text-[12px] focus:outline-none focus:border-red bg-white" />
+          <button id="searchClear" onclick="clearSearch()"
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-[14px] opacity-0 pointer-events-none"
+            title="Hapus">✕</button>
+        </div>
+        <div id="searchMeta" class="text-[10px] text-gray-400 mt-1 px-0.5"></div>
+      </div>
+
+      <!-- List header -->
+      <div class="px-4 pt-3 pb-1">
+        <h3 class="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          Daftar Invoice
+          <span id="invCount"
+            class="hidden bg-red text-white rounded-full text-[10px] py-0.5 px-2 font-bold ml-1"></span>
+        </h3>
+      </div>
+
+      <div id="invoiceList" class="flex-1 overflow-y-auto p-2">
+        <div class="text-gray-500 text-[13px] italic p-2">Belum ada data. Upload file terlebih dahulu.</div>
+      </div>
+      <div id="noSearchResult" class="text-center py-6 px-4 text-gray-400 text-[12px]">
+        <div class="text-2xl mb-1">🔍</div>
+        Tidak ada invoice yang cocok.
+      </div>
+    </div>
+
+    <!-- Main panel -->
+    <div id="mainPanel" class="flex-1 overflow-auto p-6 bg-[#e5e7eb]">
+
+      <!-- Toolbar -->
+      <div id="toolbar"
+        class="hidden bg-white border-b border-gray-300 p-3 px-4 items-center flex-wrap gap-3 -mx-6 -mt-6 mb-6">
+        <span id="toolbarTitle" class="text-sm font-bold text-gray-900 mr-auto"></span>
+
+        <!-- Mode toggle -->
+        <div class="flex items-center gap-1.5">
+          <span class="text-[11px] text-gray-500 font-semibold mr-1">Mode:</span>
+          <button class="mode-btn active text-[11px] font-semibold px-2.5 py-1 rounded-md border" data-mode="A"
+            onclick="setMode('A')" title="Gabungkan semua item dalam 1 faktur">A — Gabung</button>
+          <button class="mode-btn text-[11px] font-semibold px-2.5 py-1 rounded-md border" data-mode="B"
+            onclick="setMode('B')" title="Pisahkan tiap baris menjadi faktur sendiri">B — Pisah</button>
+          <button class="mode-btn text-[11px] font-semibold px-2.5 py-1 rounded-md border" data-mode="C"
+            onclick="setMode('C')" title="Gabungkan & tandai item susulan">C — Gabung + Label</button>
+        </div>
+
+        <div class="flex gap-2 flex-wrap">
+          <button class="bg-red hover:bg-red-dark text-white py-2 px-4 rounded-md text-[13px] font-semibold transition"
+            onclick="window.print()">🖨️ Cetak / Print PDF</button>
+          <button
+            class="bg-accent hover:bg-accent-hover text-white py-2 px-4 rounded-md text-[13px] font-semibold transition"
+            onclick="printAll()">📥 Print Semua</button>
+          <button
+            class="bg-cyan-600 hover:bg-cyan-800 text-white py-2 px-4 rounded-md text-[13px] font-semibold transition"
+            onclick="openBulkPrintView()">📑 Print Pilihan</button>
+          <button
+            class="bg-[#1e6f3e] hover:bg-[#155a32] text-white py-2 px-4 rounded-md text-[13px] font-semibold transition"
+            onclick="downloadCurrentPDF()">⬇️ Download PDF Ini</button>
+          <button
+            class="bg-[#1e3a6f] hover:bg-[#152d58] text-white py-2 px-4 rounded-md text-[13px] font-semibold transition"
+            onclick="downloadAllPDF()">📦 Download Semua PDF</button>
+        </div>
+      </div>
+
+      <!-- Mode info banner -->
+      <div id="modeBanner" class="hidden mb-4 px-4 py-2.5 rounded-lg text-[12px] font-medium border"></div>
+
+      <div id="previewArea">
+        <div class="text-center py-20 px-8 text-gray-500">
+          <div class="text-5xl mb-4">🧾</div>
+          <h2 class="text-lg font-semibold text-gray-700 mb-2">Selamat Datang</h2>
+          <p class="text-sm leading-relaxed">Upload file Excel lalu pilih invoice<br>untuk melihat preview faktur.</p>
+        </div>
+      </div>
+
+      <div id="bulkPrintArea" class="hidden bg-white rounded-lg shadow-sm border border-gray-200 p-5 mt-4">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-lg font-bold text-gray-800">Pilih Invoice untuk Dicetak Massal</h2>
+          <div class="flex gap-2">
+            <button onclick="printSelected()"
+              class="bg-cyan-600 hover:bg-cyan-800 text-white py-2 px-4 rounded-md text-[13px] font-semibold transition shadow-sm">
+              🖨️ Cetak Terpilih (<span id="selectedCount">0</span>)
+            </button>
+            <button onclick="downloadSelectedPDF()"
+              class="bg-[#1e6f3e] hover:bg-[#155a32] text-white py-2 px-4 rounded-md text-[13px] font-semibold transition shadow-sm">
+              ⬇️ Download Terpilih (<span id="selectedCountDownload">0</span>)
+            </button>
+          </div>
+        </div>
+        <div class="overflow-x-auto border border-gray-200 rounded-md">
+          <table class="w-full text-left border-collapse text-[13px]">
+            <thead>
+              <tr class="bg-gray-100 border-b border-gray-300">
+                <th class="p-3 w-12 text-center border-r border-gray-200">
+                  <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)"
+                    class="w-4 h-4 cursor-pointer">
+                </th>
+                <th class="p-3 font-bold text-gray-700 border-r border-gray-200">Nomor Faktur</th>
+                <th class="p-3 font-bold text-gray-700 border-r border-gray-200">Nama Customer</th>
+                <th class="p-3 font-bold text-gray-700 text-center border-r border-gray-200">Jml Item</th>
+                <th class="p-3 font-bold text-gray-700 text-right">Total (Rp)</th>
+              </tr>
+            </thead>
+            <tbody id="bulkTableBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="printContainer" class="hidden print:block w-full bg-white"></div>
+
+  <script>
+    // ==========================================
+    // STATE
+    // ==========================================
+    let workbook = null;
+    let allData = [];
+    let invoiceMap = {};      // { invoiceId: [rows] }  — mode A & C
+    let invoiceListFlat = []; // [ {id, rows, susulan} ] — mode B (1 entry per baris)
+    let allColumns = [];
+    let currentInvoiceId = null;
+    let currentMode = 'A';   // 'A' | 'B' | 'C'
+    let invoiceMeta = {};
+    let modalCallback = null;
+
+    // ==========================================
+    // INDEXEDDB
+    // ==========================================
+    const DB_NAME = 'InvoiceAppDB';
+    const DB_VERSION = 1;
+    const STORE_NAME = 'files';
+    const FILE_KEY = 'lastFile';
+    let db = null;
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = e => {
+          e.target.result.createObjectStore(STORE_NAME);
+        };
+        req.onsuccess = e => { db = e.target.result; resolve(db); };
+        req.onerror = e => reject(e);
+      });
+    }
+
+    function saveFileToDB(fileName, arrayBuffer, sheetNames) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).put({ fileName, arrayBuffer, sheetNames, savedAt: Date.now() }, FILE_KEY);
+        tx.oncomplete = resolve;
+        tx.onerror = reject;
+      });
+    }
+
+    function loadFileFromDB() {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const req = tx.objectStore(STORE_NAME).get(FILE_KEY);
+        req.onsuccess = e => resolve(e.target.result || null);
+        req.onerror = reject;
+      });
+    }
+
+    function clearFileFromDB() {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).delete(FILE_KEY);
+        tx.oncomplete = resolve;
+        tx.onerror = reject;
+      });
+    }
+
+    function updateDBBadge(fileName) {
+      const badge = document.getElementById('dbBadge');
+      const text = document.getElementById('dbBadgeText');
+      if (fileName) {
+        text.textContent = `Tersimpan: ${fileName}`;
+        badge.classList.remove('hidden');
+        badge.classList.add('flex');
+      } else {
+        badge.classList.add('hidden');
+        badge.classList.remove('flex');
+      }
+    }
+
+    function confirmClearDB() {
+      openConfirmModal(
+        'Hapus File Tersimpan?',
+        'File Excel yang tersimpan di browser akan dihapus. Anda perlu upload ulang untuk menggunakan aplikasi.',
+        'Hapus',
+        async () => {
+          await clearFileFromDB();
+          updateDBBadge(null);
+          // Reset file input so same file can be re-uploaded
+          document.getElementById('fileInput').value = '';
+          // Reset state
+          workbook = null; allData = []; invoiceMap = {}; invoiceListFlat = []; allColumns = []; currentInvoiceId = null; invoiceMeta = {};
+          document.getElementById('sheetSection').classList.add('hidden');
+          document.getElementById('searchSection').classList.add('hidden');
+          document.getElementById('toolbar').classList.add('hidden');
+          document.getElementById('toolbar').classList.remove('flex');
+          document.getElementById('invoiceList').innerHTML = '<div class="text-gray-500 text-[13px] italic p-2">Belum ada data. Upload file terlebih dahulu.</div>';
+          document.getElementById('invCount').classList.add('hidden');
+          document.getElementById('previewArea').innerHTML = `<div class="text-center py-20 px-8 text-gray-500"><div class="text-5xl mb-4">🧾</div><h2 class="text-lg font-semibold text-gray-700 mb-2">Selamat Datang</h2><p class="text-sm leading-relaxed">Upload file Excel lalu pilih invoice<br>untuk melihat preview faktur.</p></div>`;
+          setStatus('bg-yellow-100 text-yellow-800', '🗑️ File tersimpan dihapus.');
+          showNotif('File tersimpan berhasil dihapus.', 'bg-gray-700');
+        }
+      );
+    }
+
+    // ==========================================
+    // MODAL
+    // ==========================================
+    function openConfirmModal(title, msg, confirmLabel, onConfirm) {
+      document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalMsg').textContent = msg;
+      document.getElementById('modalConfirm').textContent = confirmLabel;
+      modalCallback = onConfirm;
+      document.getElementById('modalConfirm').onclick = () => {
+        const cb = modalCallback;
+        closeModal();
+        if (cb) cb();
+      };
+      document.getElementById('confirmModal').classList.add('visible');
+    }
+
+    function closeModal() {
+      document.getElementById('confirmModal').classList.remove('visible');
+      modalCallback = null;
+    }
+
+    // ==========================================
+    // UPLOAD & PARSING
+    // ==========================================
+    const uploadZone = document.getElementById('uploadZone');
+    uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('border-red', 'bg-red-light'); });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('border-red', 'bg-red-light'));
+    uploadZone.addEventListener('drop', e => {
+      e.preventDefault(); uploadZone.classList.remove('border-red', 'bg-red-light');
+      if (e.dataTransfer.files[0]) handleNewFile(e.dataTransfer.files[0]);
+    });
+
+    function handleFileUpload(event) {
+      if (event.target.files[0]) handleNewFile(event.target.files[0]);
+    }
+
+    async function handleNewFile(file) {
+      const existing = await loadFileFromDB();
+      if (existing) {
+        openConfirmModal(
+          'Ganti File Tersimpan?',
+          `Saat ini file "${existing.fileName}" sudah tersimpan. File ini akan diganti dengan "${file.name}". Lanjutkan?`,
+          'Ganti File',
+          () => processFile(file)
+        );
+      } else {
+        processFile(file);
+      }
+    }
+
+    function processFile(file) {
+      showLoading('Membaca file Excel...', file.name);
+      setStatus('bg-blue-100 text-blue-800', `📂 Membaca: ${file.name}...`);
+      const reader = new FileReader();
+      reader.onload = async e => {
+        try {
+          const arrayBuffer = e.target.result;
+          showLoading('Menyimpan ke browser...', 'Mohon tunggu sebentar');
+          workbook = XLSX.read(arrayBuffer, { type: 'array', cellFormula: true });
+          await saveFileToDB(file.name, arrayBuffer, workbook.SheetNames);
+          updateDBBadge(file.name);
+          initSheetSelector(workbook.SheetNames);
+          hideLoading();
+          setStatus('bg-green-100 text-green-800', `✅ File berhasil dibaca!`);
+          showNotif(`✅ File "${file.name}" tersimpan di browser.`, 'bg-green-700');
+        } catch (err) {
+          hideLoading();
+          setStatus('bg-red-100 text-red-800', '❌ Gagal membaca file: ' + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function initSheetSelector(sheetNames) {
+      const sel = document.getElementById('sheetSelect');
+      sel.innerHTML = '';
+      sheetNames.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s; opt.textContent = s;
+        if (s === 'D.Sample (2)') opt.selected = true;
+        sel.appendChild(opt);
+      });
+      document.getElementById('sheetSection').classList.remove('hidden');
+      loadSheet();
+    }
+
+    function loadSheet() {
+      if (!workbook) return;
+      const sheetName = document.getElementById('sheetSelect').value;
+      showLoading('Memproses data sheet...', sheetName);
+      // setTimeout so the loading overlay renders before the heavy parse
+      setTimeout(() => {
+        try {
+          const ws = workbook.Sheets[sheetName];
+          const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+          if (!raw || raw.length === 0) {
+            hideLoading();
+            setStatus('bg-red-100 text-red-800', '❌ Sheet kosong.');
+            return;
+          }
+          allData = raw;
+          allColumns = Object.keys(raw[0]);
+          buildInvoiceMap();
+          renderInvoiceList();
+          document.getElementById('searchSection').classList.remove('hidden');
+          clearSearch();
+          hideLoading();
+          setStatus('bg-green-100 text-green-800', `✅ Data siap (${raw.length} baris)`);
+        } catch (err) {
+          hideLoading();
+          setStatus('bg-red-100 text-red-800', '❌ Gagal memproses sheet: ' + err.message);
+        }
+      }, 50);
+    }
+
+    function buildInvoiceMap() {
+      invoiceMap = {};
+      invoiceListFlat = [];
+      invoiceMeta = {};
+      const invoiceKey = allColumns.find(c => c.toLowerCase().includes('invoice') || c === 'Invoice') || allColumns[0];
+      const namaKey = allColumns.find(c => c === 'Nama' || c.toLowerCase() === 'nama');
+
+      // First pass: group by invoice id
+      allData.forEach(row => {
+        const id = String(row[invoiceKey] || 'UNKNOWN');
+        if (!invoiceMap[id]) invoiceMap[id] = [];
+        invoiceMap[id].push(row);
+      });
+
+      // Build flat list for mode B (1 entry per row, mark susulan)
+      // and compute meta for all modes
+      Object.entries(invoiceMap).forEach(([id, rows]) => {
+        // Mode B flat entries
+        rows.forEach((row, idx) => {
+          invoiceListFlat.push({ id, row, isSusulan: idx > 0 });
+        });
+
+        // Meta
+        let total = 0;
+        rows.forEach(r => {
+          const item = extractAndCalculateRow(r);
+          total += item.dppKomersial + item.ppn;
+        });
+        invoiceMeta[id] = {
+          total,
+          itemCount: rows.length,
+          nama: namaKey ? (rows[0][namaKey] || '') : ''
+        };
+      });
+    }
+
+    // ==========================================
+    // MODE
+    // ==========================================
+    function setMode(mode) {
+      currentMode = mode;
+      localStorage.setItem('invoiceMode', mode);
+      document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+      });
+
+      const banner = document.getElementById('modeBanner');
+      const configs = {
+        A: { text: 'Mode A — Gabung: Invoice dengan nomor faktur yang sama digabung menjadi 1 faktur.', cls: 'bg-blue-50 border-blue-200 text-blue-700' },
+        B: { text: 'Mode B — Pisah: Setiap baris ditampilkan sebagai faktur terpisah, meski nomor fakturnya sama. Mengikuti file excel aslinya. Item susulan diberi badge kuning SUSULAN.', cls: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
+        C: { text: 'Mode C — Gabung + Label: Invoice digabung, item susulan (baris ke-2 dst) ditandai label "Susulan".', cls: 'bg-green-50 border-green-200 text-green-700' },
+      };
+      const cfg = configs[mode];
+      banner.textContent = cfg.text;
+      banner.className = `mb-4 px-4 py-2.5 rounded-lg text-[12px] font-medium border ${cfg.cls}`;
+      banner.classList.remove('hidden');
+
+      renderInvoiceList();
+      if (currentInvoiceId) renderInvoicePreview(currentInvoiceId);
+    }
+
+    // ==========================================
+    // RENDER INVOICE LIST
+    // ==========================================
+    function renderInvoiceList() {
+      const list = document.getElementById('invoiceList');
+      list.innerHTML = '';
+
+      if (currentMode === 'B') {
+        // One card per row
+        const total = invoiceListFlat.length;
+        document.getElementById('invCount').textContent = total;
+        document.getElementById('invCount').classList.remove('hidden');
+        document.getElementById('invCount').classList.add('inline-block');
+
+        invoiceListFlat.forEach(({ id, row, isSusulan }, idx) => {
+          const meta = invoiceMeta[id];
+          const item = extractAndCalculateRow(row);
+          const rowTotal = item.dppKomersial + item.ppn;
+          const flatKey = `${id}__${idx}`;
+
+          const div = document.createElement('div');
+          div.className = `p-2.5 rounded-md cursor-pointer border mb-1 transition-all duration-150 hover:bg-gray-100 hover:border-gray-300 invoice-item border-transparent`;
+          div.dataset.invoiceId = id;
+          div.dataset.flatIdx = idx;
+          div.dataset.nama = meta.nama.toLowerCase();
+          div.dataset.total = rowTotal;
+          div.dataset.itemCount = 1;
+
+          div.innerHTML = `
+            <div class="flex items-center gap-1.5">
+              <div class="text-[13px] font-bold text-gray-900 truncate">${id}</div>
+              ${isSusulan ? '<span class="shrink-0 text-[9px] font-bold bg-yellow-100 text-yellow-700 border border-yellow-300 rounded px-1 py-0.5">SUSULAN</span>' : ''}
+            </div>
+            <div class="text-[11px] text-gray-500 mt-0.5 truncate">${meta.nama} · ${item.itemName || '(no name)'}</div>
+            <div class="text-xs font-semibold text-red mt-1">${formatRp(rowTotal)}</div>
+          `;
+
+          div.onclick = () => {
+            document.querySelectorAll('.invoice-item').forEach(el => { el.classList.remove('bg-red-light', 'border-red'); el.classList.add('border-transparent'); });
+            div.classList.add('bg-red-light', 'border-red'); div.classList.remove('border-transparent');
+            currentInvoiceId = id;
+            renderInvoicePreviewSingleRow(row, isSusulan, id);
+          };
+          list.appendChild(div);
+        });
+
+      } else {
+        // Mode A & C — grouped by invoice id
+        const ids = Object.keys(invoiceMap);
+        document.getElementById('invCount').textContent = ids.length;
+        document.getElementById('invCount').classList.remove('hidden');
+        document.getElementById('invCount').classList.add('inline-block');
+
+        ids.forEach(id => {
+          const meta = invoiceMeta[id];
+          const hasSusulan = invoiceMap[id].length > 1;
+
+          const div = document.createElement('div');
+          div.className = `p-2.5 rounded-md cursor-pointer border mb-1 transition-all duration-150 hover:bg-gray-100 hover:border-gray-300 invoice-item ${id === currentInvoiceId ? 'bg-red-light border-red' : 'border-transparent'}`;
+          div.dataset.invoiceId = id;
+          div.dataset.nama = meta.nama.toLowerCase();
+          div.dataset.total = meta.total;
+          div.dataset.itemCount = meta.itemCount;
+
+          div.innerHTML = `
+            <div class="flex items-center gap-1.5">
+              <div class="text-[13px] font-bold text-gray-900 truncate">${id}</div>
+              ${(currentMode === 'C' && hasSusulan) ? '<span class="shrink-0 text-[9px] font-bold bg-yellow-100 text-yellow-700 border border-yellow-300 rounded px-1 py-0.5">ADA SUSULAN</span>' : ''}
+            </div>
+            <div class="text-[11px] text-gray-500 mt-0.5">${meta.nama} · ${meta.itemCount} item</div>
+            <div class="text-xs font-semibold text-red mt-1">${formatRp(meta.total)}</div>
+          `;
+
+          div.onclick = () => {
+            document.querySelectorAll('.invoice-item').forEach(el => { el.classList.remove('bg-red-light', 'border-red'); el.classList.add('border-transparent'); });
+            div.classList.add('bg-red-light', 'border-red'); div.classList.remove('border-transparent');
+            renderInvoicePreview(id);
+          };
+          list.appendChild(div);
+        });
+
+        if (!currentInvoiceId && list.querySelector('.invoice-item')) {
+          list.querySelector('.invoice-item').click();
+        }
+      }
+    }
+
+    // ==========================================
+    // SEARCH / FILTER
+    // ==========================================
+    function filterInvoices() {
+      const query = document.getElementById('searchInput').value.trim().toLowerCase();
+      const filter = document.getElementById('searchFilter').value;
+      const clearBtn = document.getElementById('searchClear');
+      const noResult = document.getElementById('noSearchResult');
+      const list = document.getElementById('invoiceList');
+
+      clearBtn.style.opacity = query.length > 0 ? '1' : '0';
+      clearBtn.style.pointerEvents = query.length > 0 ? 'auto' : 'none';
+
+      const items = document.querySelectorAll('.invoice-item');
+      let visibleCount = 0;
+
+      items.forEach(item => {
+        let match = true;
+        if (query.length > 0) {
+          const id = item.dataset.invoiceId;
+          const meta = invoiceMeta[id];
+          if (filter === 'invoice') match = id.toLowerCase().includes(query);
+          else if (filter === 'nama') match = item.dataset.nama.includes(query);
+          else if (filter === 'total') {
+            const cleanQ = query.replace(/[.,\s]/g, '');
+            match = String(Math.round(Number(item.dataset.total))).includes(cleanQ);
+          }
+          else if (filter === 'item') match = String(item.dataset.itemCount).includes(query);
+        }
+        item.classList.toggle('hidden-by-search', !match);
+        if (match) visibleCount++;
+      });
+
+      const total = items.length;
+      document.getElementById('searchMeta').textContent = query.length > 0 ? `${visibleCount} dari ${total} ditemukan` : '';
+
+      if (visibleCount === 0 && query.length > 0) {
+        noResult.classList.add('visible');
+        list.style.display = 'none';
+      } else {
+        noResult.classList.remove('visible');
+        list.style.display = '';
+      }
+    }
+
+    function clearSearch() {
+      document.getElementById('searchInput').value = '';
+      filterInvoices();
+    }
+
+    document.getElementById('searchFilter').addEventListener('change', function () {
+      const ph = { invoice: 'Cari nomor faktur...', nama: 'Cari nama customer...', total: 'Cari total harga (angka)...', item: 'Cari jumlah item...' };
+      document.getElementById('searchInput').placeholder = ph[this.value] || 'Ketik untuk mencari...';
+      filterInvoices();
+    });
+
+    // ==========================================
+    // RENDER PREVIEW
+    // ==========================================
+    function renderInvoicePreview(invoiceId) {
+      currentInvoiceId = invoiceId;
+      const html = generateInvoiceHTML(invoiceId);
+      document.getElementById('previewArea').innerHTML = html;
+      document.getElementById('printContainer').innerHTML = html;
+      document.getElementById('toolbar').classList.remove('hidden');
+      document.getElementById('toolbar').classList.add('flex');
+      document.getElementById('toolbarTitle').textContent = `Faktur: ${invoiceId}`;
+      document.getElementById('previewArea').classList.remove('hidden');
+      document.getElementById('bulkPrintArea').classList.add('hidden');
+    }
+
+    function renderInvoicePreviewSingleRow(row, isSusulan, invoiceId) {
+      currentInvoiceId = invoiceId;
+      const html = generateInvoiceHTMLSingleRow(row, isSusulan, invoiceId);
+      document.getElementById('previewArea').innerHTML = html;
+      document.getElementById('printContainer').innerHTML = html;
+      document.getElementById('toolbar').classList.remove('hidden');
+      document.getElementById('toolbar').classList.add('flex');
+      document.getElementById('toolbarTitle').textContent = `Faktur: ${invoiceId}${isSusulan ? ' (Susulan)' : ''}`;
+      document.getElementById('previewArea').classList.remove('hidden');
+      document.getElementById('bulkPrintArea').classList.add('hidden');
+    }
+
+    function printAll() {
+      const ids = Object.keys(invoiceMap);
+      const totalPages = currentMode === 'B' ? invoiceListFlat.length : ids.length;
+      showNotif(`Menyiapkan ${totalPages} halaman...`, 'bg-green-700');
+      let allHtml = '';
+      if (currentMode === 'B') {
+        invoiceListFlat.forEach(({ row, isSusulan, id }) => { allHtml += generateInvoiceHTMLSingleRow(row, isSusulan, id); });
+      } else {
+        ids.forEach(id => { allHtml += generateInvoiceHTML(id); });
+      }
+      document.getElementById('printContainer').innerHTML = allHtml;
+      setTimeout(() => {
+        window.print();
+        document.getElementById('printContainer').innerHTML = currentInvoiceId ? generateInvoiceHTML(currentInvoiceId) : '';
+        showNotif('✅ Selesai!', 'bg-green-700');
+      }, 500);
+    }
+
+    // ==========================================
+    // PDF DOWNLOAD
+    // ==========================================
+    function getPdfOptions(filename) {
+      return {
+        margin: 0,
+        filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css'] }
+      };
+    }
+
+    async function downloadCurrentPDF() {
+      if (!currentInvoiceId) return;
+      showLoading('Membuat PDF...', currentInvoiceId);
+      try {
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = currentMode === 'B'
+          ? document.getElementById('printContainer').innerHTML
+          : generateInvoiceHTML(currentInvoiceId);
+        const safeName = currentInvoiceId.replace(/[\/\\:*?"<>|]/g, '_');
+        await html2pdf().set(getPdfOptions(`Faktur_${safeName}.pdf`)).from(wrapper).save();
+        showNotif(`✅ PDF "${safeName}" berhasil diunduh.`, 'bg-green-700');
+      } catch (err) {
+        showNotif('❌ Gagal membuat PDF: ' + err.message, 'bg-red');
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function downloadAllPDF() {
+      const entries = currentMode === 'B'
+        ? invoiceListFlat.map(({ row, isSusulan, id }, idx) => ({
+            html: generateInvoiceHTMLSingleRow(row, isSusulan, id),
+            filename: `${String(idx + 1).padStart(4, '0')}_${id.replace(/[\/\\:*?"<>|]/g, '_')}${isSusulan ? '_susulan' : ''}.pdf`
+          }))
+        : Object.keys(invoiceMap).map((id, idx) => ({
+            html: generateInvoiceHTML(id),
+            filename: `${String(idx + 1).padStart(4, '0')}_${id.replace(/[\/\\:*?"<>|]/g, '_')}.pdf`
+          }));
+
+      const total = entries.length;
+      showLoading('Membuat ZIP...', `0 / ${total} faktur diproses`, true);
+
+      const zip = new JSZip();
+      const pdfOpts = {
+        margin: 0,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+
+      try {
+        for (let i = 0; i < total; i++) {
+          const { html, filename } = entries[i];
+
+          const percent = Math.round((i / total) * 100);
+          document.getElementById('loadingTitle').textContent = `Memproses faktur ${i + 1} dari ${total}...`;
+          setLoadingProgress(percent, `${i + 1} / ${total} — ${filename}`);
+
+          // Render ke DOM sementara agar html2canvas bisa membaca layout
+          const wrapper = document.createElement('div');
+          wrapper.innerHTML = html;
+          wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;';
+          document.body.appendChild(wrapper);
+
+          const pdfBlob = await html2pdf()
+            .set(pdfOpts)
+            .from(wrapper)
+            .outputPdf('blob');
+
+          document.body.removeChild(wrapper);
+          zip.file(filename, pdfBlob);
+
+          // Yield ke browser agar tidak freeze
+          await new Promise(r => setTimeout(r, 0));
+        }
+
+        setLoadingProgress(100, 'Mengemas ZIP...');
+        document.getElementById('loadingTitle').textContent = 'Mengemas file ZIP...';
+        document.getElementById('loadingSubtitle').textContent = 'Sebentar lagi selesai';
+
+        const sheetName = document.getElementById('sheetSelect').value.replace(/[\/\\:*?"<>|]/g, '_');
+        const zipBlob = await zip.generateAsync({
+          type: 'blob',
+          compression: 'DEFLATE',
+          compressionOptions: { level: 6 }
+        });
+
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Faktur_${sheetName}_${total}file.zip`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        showNotif(`✅ ZIP berhasil diunduh (${total} faktur).`, 'bg-green-700');
+      } catch (err) {
+        showNotif('❌ Gagal membuat ZIP: ' + err.message, 'bg-red');
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // ==========================================
+    // HTML GENERATORS
+    // ==========================================
+    function generateInvoiceHTML(invoiceId) {
+      const rows = invoiceMap[invoiceId];
+      if (!rows) return '';
+      const first = rows[0];
+
+      const invoiceNo = getValue(first, ['invoice', 'invoiceid']);
+      const sjNo = getValue(first, ['surat jalan', 'packingslip']);
+      const soNo = getValue(first, ['sales order', 'salesid']);
+      const poNo = getValue(first, ['no po', 'customerref']);
+      const noKend = getValue(first, ['no kendaraan']);
+      const nama = getValue(first, ['nama', 'name']);
+      const alamat = getValue(first, ['alamat']);
+      const npwp = getValue(first, ['npwp']);
+      const tujuanNama = getValue(first, ['tujuh nama pengiriman', 'tujuan']);
+      const tujuanAlamat = getValue(first, ['alamat pengiriman']);
+      const dateStr = formatDate(getValue(first, ['date', 'tanggal', 'invoicedate']));
+
+      let totalDPPKomersial = 0, totalDPPFiskal = 0, totalPPN = 0;
+      let tableRowsHTML = '';
+
+      rows.forEach((row, idx) => {
+        const item = extractAndCalculateRow(row);
+        totalDPPKomersial += item.dppKomersial;
+        totalDPPFiskal += item.dppFiskal;
+        totalPPN += item.ppn;
+        if (item.qty === 0 && !item.itemName) return;
+
+        const isSusulan = currentMode === 'C' && idx > 0;
+        tableRowsHTML += `
+          <tr>
+            <td class="border-r border-gray-800 px-2 text-center">${idx + 1}</td>
+            <td class="border-r border-gray-800 px-2">${item.itemCode}</td>
+            <td class="border-r border-gray-800 px-2 truncate">
+              ${item.itemName}
+            </td>
+            <td class="border-r border-gray-800 px-2 text-center">${formatNum(item.qty)} ${item.unit}</td>
+            <td class="border-r border-gray-800 px-2 text-right">${formatNum(item.price)}</td>
+            <td class="border-gray-800 px-2 text-right">${formatNum(item.dppKomersial)}</td>
+          </tr>`;
+      });
+
+      tableRowsHTML += fillerRows(rows.length);
+      return invoiceTemplate({ invoiceNo, sjNo, soNo, poNo, noKend, nama, alamat, npwp, tujuanNama, tujuanAlamat, dateStr, tableRowsHTML, totalDPPKomersial, totalDPPFiskal, totalPPN });
+    }
+
+    function generateInvoiceHTMLSingleRow(row, isSusulan, invoiceId) {
+      const invoiceNo = getValue(row, ['invoice', 'invoiceid']);
+      const sjNo = getValue(row, ['surat jalan', 'packingslip']);
+      const soNo = getValue(row, ['sales order', 'salesid']);
+      const poNo = getValue(row, ['no po', 'customerref']);
+      const noKend = getValue(row, ['no kendaraan']);
+      const nama = getValue(row, ['nama', 'name']);
+      const alamat = getValue(row, ['alamat']);
+      const npwp = getValue(row, ['npwp']);
+      const tujuanNama = getValue(row, ['tujuh nama pengiriman', 'tujuan']);
+      const tujuanAlamat = getValue(row, ['alamat pengiriman']);
+      const dateStr = formatDate(getValue(row, ['date', 'tanggal', 'invoicedate']));
+
+      const item = extractAndCalculateRow(row);
+      const totalDPPKomersial = item.dppKomersial;
+      const totalDPPFiskal = item.dppFiskal;
+      const totalPPN = item.ppn;
+
+      const tableRowsHTML = `
+        <tr>
+          <td class="border-r border-gray-800 px-2 text-center">1</td>
+          <td class="border-r border-gray-800 px-2">${item.itemCode}</td>
+          <td class="border-r border-gray-800 px-2 truncate">
+            ${item.itemName}
+          </td>
+          <td class="border-r border-gray-800 px-2 text-center">${formatNum(item.qty)} ${item.unit}</td>
+          <td class="border-r border-gray-800 px-2 text-right">${formatNum(item.price)}</td>
+          <td class="border-gray-800 px-2 text-right">${formatNum(item.dppKomersial)}</td>
+        </tr>
+        ${fillerRows(1)}
+      `;
+      return invoiceTemplate({ invoiceNo, sjNo, soNo, poNo, noKend, nama, alamat, npwp, tujuanNama, tujuanAlamat, dateStr, tableRowsHTML, totalDPPKomersial, totalDPPFiskal, totalPPN });
+    }
+
+    function fillerRows(existingCount) {
+      const minRows = 9;
+      let html = '';
+      for (let i = existingCount; i < minRows; i++) {
+        const isLast = i === minRows - 1;
+        const b = isLast ? 'border-b ' : '';
+        html += `<tr class="h-6">
+          <td class="border-r ${b}border-gray-800 px-2">&nbsp;</td>
+          <td class="border-r ${b}border-gray-800"></td>
+          <td class="border-r ${b}border-gray-800"></td>
+          <td class="border-r ${b}border-gray-800"></td>
+          <td class="border-r ${b}border-gray-800"></td>
+          <td class="${b}border-gray-800"></td>
+        </tr>`;
+      }
+      return html;
+    }
+
+    function invoiceTemplate({ invoiceNo, sjNo, soNo, poNo, noKend, nama, alamat, npwp, tujuanNama, tujuanAlamat, dateStr, tableRowsHTML, totalDPPKomersial, totalDPPFiskal, totalPPN }) {
+      const grandTotal = totalDPPKomersial + totalPPN;
+      return `
+        <div class="page bg-white max-w-4xl mx-auto shadow-lg p-8 text-xs text-gray-900">
+          <div class="border border-gray-800">
+            <div class="flex justify-center items-center pb-2">
+              <div class="text-xs leading-tight text-center">
+                <div class="font-bold text-sm">PT Belfoods Indonesia</div>
+                <div>01.638.442.2-062.000</div>
+                <div class="leading-snug">Sequis Tower Lantai 40, Jl Jenderal Sudirman Kav. 71, Senayan, Kebayoran Baru, Kota Adm. Jakarta Selatan</div>
+              </div>
+            </div>
+            <div class="divider"></div>
+            <div class="text-center"><div class="text-xl font-bold tracking-wide underline mb-4">FAKTUR PENJUALAN</div></div>
+            <div class="px-3 pt-2 pb-1">
+              <div class="grid grid-cols-2 gap-x-6 text-xs mb-4">
+                <div><div class="flex gap-2"><span class="w-36">Nomor Faktur Penjualan</span><span>: ${invoiceNo}</span></div></div>
+              </div>
+              <div class="grid grid-cols-2 gap-x-8 text-xs mb-2">
+                <div class="space-y-0.5">
+                  <div class="flex gap-2"><span class="w-36">Nomor SJ</span><span>: ${sjNo}</span></div>
+                  <div class="flex gap-2"><span class="w-36">Nomor SO</span><span>: ${soNo}</span></div>
+                </div>
+                <div class="space-y-0.5">
+                  <div class="flex gap-2"><span class="w-36">Nomor PO</span><span class="font-semibold truncate">: ${poNo}</span></div>
+                  <div class="flex gap-2"><span>Nomor Kendaraan</span><span>: ${noKend}</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="divider"></div>
+            <div class="font-bold px-3 py-0.5 bg-white border border-gray-800">Pembeli Barang Kena Pajak / Penerima Jasa Kena Pajak</div>
+            <div class="divider"></div>
+            <div class="px-3 py-2 space-y-0.5">
+              <div class="flex gap-2"><span class="w-36 shrink-0">Nama</span><span>: ${nama}</span></div>
+              <div class="flex gap-2 pb-4"><span class="w-36 shrink-0">Alamat</span><span class="leading-snug truncate">: ${alamat}</span></div>
+              <div class="flex gap-2"><span class="w-36 shrink-0">NPWP</span><span>: ${npwp}</span></div>
+              <div class="flex gap-2"><span class="w-36 shrink-0">Tujuan Nama Pengiriman</span><span>: ${tujuanNama}</span></div>
+              <div class="flex gap-2"><span class="w-36 shrink-0">Alamat Pengiriman</span><span class="leading-snug truncate">: ${tujuanAlamat}</span></div>
+            </div>
+            <div class="divider"></div>
+            <table class="w-full text-xs border-collapse">
+              <thead>
+                <tr class="bg-gray-100">
+                  <th colspan="5" class="border border-gray-800 px-2 py-1 text-center font-semibold">Nama Barang Kena Pajak / Jasa Kena Pajak</th>
+                  <th rowspan="2" class="border border-gray-800 px-2 py-1 text-center w-36 font-semibold align-middle">Harga Jual / <s>Penggantian /</s><br/><s>Uang Muka / Termin</s><br/>Rp.</th>
+                </tr>
+                <tr class="bg-gray-100">
+                  <th class="border border-gray-800 px-2 text-center w-6 font-semibold">No</th>
+                  <th class="border border-gray-800 px-2 text-center w-18 font-semibold">Kode Barang</th>
+                  <th class="border border-gray-800 px-2 text-center font-semibold">Nama Barang</th>
+                  <th class="border border-gray-800 px-2 text-center w-22 font-semibold">Kuantitas</th>
+                  <th class="border border-gray-800 px-2 text-center w-28 font-semibold">Harga Satuan<br/>Rp.</th>
+                </tr>
+              </thead>
+              <tbody>${tableRowsHTML}</tbody>
+            </table>
+            <div class="flex text-xs"><div class="flex-1 px-2 pb-0.5">Harga Jual<s> / Penggantian / Uang Muka / Termin *</s>)</div><div class="w-36 pr-2 pb-0.5 text-right border-l border-gray-800">${formatNum(totalDPPKomersial)}</div></div>
+            <div class="flex text-xs"><div class="flex-1 px-2 pb-0.5">Dikurangi Potongan Harga (Objek PPN)</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">0.00</div></div>
+            <div class="flex text-xs"><div class="flex-1 px-2 pb-0.5">Dikurangi Potongan Harga (Non Objek PPN)</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">0.00</div></div>
+            <div class="flex text-xs"><div class="flex-1 px-2 pb-0.5">Dikurangi Uang Muka Yang Telah Diterima</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">0.00</div></div>
+            <div class="flex text-xs"><div class="flex-1 px-2 pb-0.5">Jumlah potongan &amp; / uang muka</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">0.00</div></div>
+            <div class="flex text-xs"><div class="flex-1 px-2 pb-0.5">DPP Komersial</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">${formatNum(totalDPPKomersial)}</div></div>
+            <div class="flex text-xs"><div class="flex-1 px-2 pb-0.5">DPP Fiskal</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">${formatNum(totalDPPFiskal)}</div></div>
+            <div class="flex text-xs"><div class="flex-1 px-2 pb-0.5">PPN = 12 % x DPP Fiskal</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">${formatNum(totalPPN)}</div></div>
+            <div class="flex text-xs"><div class="flex-1 px-2 pb-0.5">DPP PPN Dibebaskan</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">0.00</div></div>
+            <div class="flex border border-gray-800 text-xs font-bold bg-gray-100"><div class="flex-1 px-2 pb-0.5">Jumlah Yang Harus Dibayar</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">${formatNum(grandTotal)}</div></div>
+            <div class="flex text-xs border-t border-gray-800 pt-4">
+              <div class="flex-1"></div>
+              <div class="w-56 px-2 flex flex-col items-center text-center">
+                <div>Jakarta, ${dateStr}</div>
+                <div class="h-12"></div>
+                <div class="font-semibold mt-0.5">Accounting Manager</div>
+              </div>
+            </div>
+            <div class="flex flex-col mt-2">
+              <div class="px-2">
+                <div class="font-semibold">Syarat Pembayaran</div>
+                <div class="flex gap-2"><span class="w-36 shrink-0">Tgl. Jatuh Tempo</span><span>:</span></div>
+                <div class="flex gap-2"><span class="w-36 shrink-0">Harap ditransfer ke bank</span><span>:</span></div>
+              </div>
+              <div class="px-2 py-1">
+                <div class="font-semibold">Catatan</div>
+                <div class="leading-snug text-xs">1. Keterlambatan pembayaran akan dikenakan denda / penalty sebesar 2 % / bulan terhitung sejak tanggal jatuh tempo.</div>
+                <div class="leading-snug text-xs">2. Pembayaran hanya dapat dilakukan melalui rekening Virtual Account yang tercantum.</div>
+              </div>
+            </div>
+          </div>
+          <div class="flex justify-start text-[10px] px-3"><div>*) Coret yang tidak perlu</div></div>
+          <div class="flex justify-end text-gray-500 font-bold text-md mr-6">1 of 1</div>
+        </div>`;
+    }
+
+    // ==========================================
+    // UTILITIES
+    // ==========================================
+    function getValue(row, keywords) {
+      for (let key of Object.keys(row)) {
+        if (keywords.some(kw => key.toLowerCase().includes(kw.toLowerCase()))) return row[key];
+      }
+      return '';
+    }
+
+    function extractAndCalculateRow(row) {
+      const qty = parseNum(getValue(row, ['qty', 'kuantitas', 'jumlah']));
+      const price = parseNum(getValue(row, ['price', 'harga satuan']));
+      const dppKomersial = qty * price;
+      const dppFiskal = dppKomersial * (11 / 12);
+      const ppn = dppFiskal * 0.12;
+      return {
+        itemCode: getValue(row, ['item', 'kode barang']),
+        itemName: getValue(row, ['nama barang']),
+        unit: getValue(row, ['unit']) || 'Ctn',
+        qty, price, dppKomersial, dppFiskal, ppn
+      };
+    }
+
+    function parseNum(val) {
+      if (val === undefined || val === null) return 0;
+      if (typeof val === 'number') return val;
+      if (typeof val === 'object') return 0;
+      let str = String(val).trim();
+      if (str === '' || str.includes('#')) return 0;
+      str = str.replace(/[^\d.,-]/g, '');
+      if (!str) return 0;
+      const lastDot = str.lastIndexOf('.');
+      const lastComma = str.lastIndexOf(',');
+      if (lastComma > lastDot) str = str.replace(/\./g, '').replace(',', '.');
+      else if (lastDot > lastComma) str = str.replace(/,/g, '');
+      else if (lastComma > -1) str = str.replace(',', '.');
+      const res = parseFloat(str);
+      return isNaN(res) ? 0 : res;
+    }
+
+    function formatNum(num) {
+      if (isNaN(num) || num === 0) return '0.00';
+      return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function formatRp(num) {
+      if (isNaN(num) || num === 0) return 'Rp 0,00';
+      return 'Rp ' + num.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function formatDate(val) {
+      if (!val) return new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+      let d;
+      if (typeof val === 'number') d = new Date((val - 25569) * 86400 * 1000);
+      else {
+        d = new Date(val);
+        if (isNaN(d)) { const p = String(val).split('/'); if (p.length === 3) d = new Date(`${p[2]}-${p[1]}-${p[0]}`); }
+      }
+      return isNaN(d) ? String(val) : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+    }
+
+    function showLoading(title = 'Memuat data...', subtitle = '', withProgress = false) {
+      document.getElementById('loadingTitle').textContent = title;
+      document.getElementById('loadingSubtitle').textContent = subtitle;
+      const progressWrap = document.getElementById('loadingProgressWrap');
+      if (withProgress) {
+        progressWrap.classList.remove('hidden');
+        setLoadingProgress(0, '');
+      } else {
+        progressWrap.classList.add('hidden');
+      }
+      const el = document.getElementById('loadingOverlay');
+      el.classList.remove('hidden');
+      el.classList.add('flex');
+    }
+
+    function setLoadingProgress(percent, text) {
+      document.getElementById('loadingProgressBar').style.width = percent + '%';
+      document.getElementById('loadingProgressText').textContent = text;
+    }
+
+    function hideLoading() {
+      const el = document.getElementById('loadingOverlay');
+      el.classList.add('hidden');
+      el.classList.remove('flex');
+      document.getElementById('loadingProgressWrap').classList.add('hidden');
+    }
+
+    function setStatus(classes, msg) {
+      document.getElementById('uploadStatus').innerHTML = `<span class="inline-flex items-center gap-1.5 text-[11px] py-1 px-2.5 rounded-full font-semibold ${classes}">${msg}</span>`;
+    }
+
+    function showNotif(msg, bgClass) {
+      const el = document.getElementById('notif');
+      el.textContent = msg;
+      el.className = `fixed bottom-6 right-6 px-5 py-3 rounded-lg text-sm font-semibold shadow-xl z-[9999] transition-all duration-300 text-white ${bgClass} translate-y-0 opacity-100`;
+      setTimeout(() => { el.className = `fixed bottom-6 right-6 px-5 py-3 rounded-lg text-sm font-semibold shadow-xl z-[9999] transition-all duration-300 text-white ${bgClass} translate-y-24 opacity-0`; }, 3500);
+    }
+
+    // ==========================================
+    // FITUR: PRINT PILIHAN (MASSAL) - SAFE VERSION
+    // ==========================================
+    let selectedInvoices = new Set();
+
+    function openBulkPrintView() {
+      try {
+        const preview = document.getElementById('previewArea');
+        const bulkArea = document.getElementById('bulkPrintArea');
+
+        if (!preview || !bulkArea) {
+          alert("Error: Elemen 'previewArea' atau 'bulkPrintArea' tidak ditemukan di HTML. Periksa kembali ID-nya.");
+          return;
+        }
+
+        // Tukar tampilan
+        preview.classList.add('hidden');
+        bulkArea.classList.remove('hidden');
+
+        // Coba ganti judul jika elemennya ada
+        const titleEl = document.getElementById('toolbarTitle') || document.querySelector('h1') || document.querySelector('.text-xl');
+        if (titleEl) titleEl.textContent = `Mode Print Pilihan (Massal)`;
+
+        // Reset state pencentangan
+        selectedInvoices.clear();
+        document.getElementById('selectedCount').textContent = '0';
+        const mainCb = document.getElementById('selectAllCheckbox');
+        if (mainCb) mainCb.checked = false;
+
+        // Jalankan render tabel
+        renderBulkPrintTable();
+      } catch (err) {
+        alert("Gagal membuka mode pilihan: " + err.message);
+        console.error(err);
+      }
+    }
+
+    function renderBulkPrintTable() {
+      try {
+        const tbody = document.getElementById('bulkTableBody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        // Memeriksa variabel mode aplikasi Anda
+        const mode = typeof currentMode !== 'undefined' ? currentMode : 'A';
+
+        if (mode === 'B') {
+          // Proteksi jika nama variabel flat list Anda berbeda
+          if (typeof invoiceListFlat === 'undefined') {
+            throw new ReferenceError("Variabel 'invoiceListFlat' tidak ditemukan. Silakan periksa apa nama variabel daftar invoice flat di file Anda.");
+          }
+
+          invoiceListFlat.forEach((item, index) => {
+            const invoiceNo = item.id;
+            const isSusulan = item.isSusulan;
+
+            // Jalankan fungsi kalkulasi bawaan aplikasi Anda jika ada
+            let total = 0;
+            if (typeof extractAndCalculateRow === 'function') {
+              const rowData = extractAndCalculateRow(item.row);
+              total = rowData.dppKomersial + rowData.ppn;
+            }
+
+            const nama = item.row['Nama'] || item.row['nama'] || '';
+            createTableRow(tbody, index, invoiceNo, isSusulan, nama, 1, total, true);
+          });
+        } else {
+          // Mode A & C
+          if (typeof invoiceMap === 'undefined' || typeof invoiceMeta === 'undefined') {
+            throw new ReferenceError("Variabel 'invoiceMap' atau 'invoiceMeta' tidak ditemukan. Periksa nama variabel penampung data Excel Anda.");
+          }
+
+          const ids = Object.keys(invoiceMap);
+          ids.forEach(id => {
+            const meta = invoiceMeta[id] || { nama: '', itemCount: 0, total: 0 };
+            const hasSusulan = invoiceMap[id] && invoiceMap[id].length > 1;
+            const isSusulanDisplay = (mode === 'C' && hasSusulan);
+
+            createTableRow(tbody, id, id, isSusulanDisplay, meta.nama, meta.itemCount, meta.total, false);
+          });
+        }
+      } catch (err) {
+        alert("Gagal menampilkan daftar tabel: " + err.message);
+        console.error(err);
+      }
+    }
+
+    function createTableRow(tbody, valueId, displayId, isSusulan, nama, count, total, isModeB) {
+      const tr = document.createElement('tr');
+      tr.className = "border-b border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors";
+
+      const badgeHtml = isSusulan
+        ? '<span class="text-[9px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded ml-2 border border-yellow-300 font-bold">SUSULAN</span>'
+        : '';
+
+      // Penggunaan format Rp bawaan aplikasi atau fallback ke lokal biasa
+      const formatFn = typeof formatRp === 'function' ? formatRp : (num) => 'Rp ' + Number(num).toLocaleString('id-ID');
+
+      tr.innerHTML = `
+        <td class="p-3 text-center border-r border-gray-200">
+          <input type="checkbox" class="row-checkbox w-4 h-4 cursor-pointer" value="${valueId}" onclick="event.stopPropagation(); handleRowSelect(this, this.value)">
+        </td>
+        <td class="p-3 font-semibold text-gray-900 border-r border-gray-200">${displayId} ${badgeHtml}</td>
+        <td class="p-3 border-r border-gray-200 text-gray-700">${nama}</td>
+        <td class="p-3 text-center border-r border-gray-200">${count}</td>
+        <td class="p-3 text-right font-bold text-red-600">${formatFn(total)}</td>
+      `;
+
+      tr.onclick = () => {
+        const cb = tr.querySelector('.row-checkbox');
+        if (cb) {
+          cb.checked = !cb.checked;
+          handleRowSelect(cb, cb.value);
+        }
+      };
+      tbody.appendChild(tr);
+    }
+
+    function handleRowSelect(cb, id) {
+      if (cb.checked) {
+        selectedInvoices.add(String(id));
+      } else {
+        selectedInvoices.delete(String(id));
+      }
+      document.getElementById('selectedCount').textContent = selectedInvoices.size;
+      document.getElementById('selectedCountDownload').textContent = selectedInvoices.size;
+
+      // Sinkronisasi status checkbox "Pilih Semua"
+      const checkboxes = document.querySelectorAll('.row-checkbox');
+      const allChecked = checkboxes.length > 0 && Array.from(checkboxes).every(c => c.checked);
+      const mainCb = document.getElementById('selectAllCheckbox');
+      if (mainCb) mainCb.checked = allChecked;
+    }
+
+    function toggleSelectAll(cb) {
+      const checkboxes = document.querySelectorAll('.row-checkbox');
+      checkboxes.forEach(c => {
+        c.checked = cb.checked;
+        if (cb.checked) selectedInvoices.add(String(c.value));
+        else selectedInvoices.delete(String(c.value));
+      });
+      document.getElementById('selectedCount').textContent = selectedInvoices.size;
+      document.getElementById('selectedCountDownload').textContent = selectedInvoices.size;
+    }
+
+    function printSelected() {
+      try {
+        if (selectedInvoices.size === 0) {
+          alert('Pilih minimal 1 invoice untuk dicetak masal');
+          return;
+        }
+
+        let allHtml = '';
+        const mode = typeof currentMode !== 'undefined' ? currentMode : 'A';
+
+        if (mode === 'B') {
+          selectedInvoices.forEach(indexStr => {
+            const idx = parseInt(indexStr);
+            const item = invoiceListFlat[idx];
+            if (typeof generateInvoiceHTMLSingleRow === 'function') {
+              allHtml += generateInvoiceHTMLSingleRow(item.row, item.isSusulan, item.id);
+            }
+          });
+        } else {
+          selectedInvoices.forEach(id => {
+            if (typeof generateInvoiceHTML === 'function') {
+              allHtml += generateInvoiceHTML(id);
+            }
+          });
+        }
+
+        const printContainer = document.getElementById('printContainer');
+        if (!printContainer) {
+          alert("Elemen 'printContainer' tidak ditemukan.");
+          return;
+        }
+
+        printContainer.innerHTML = allHtml;
+
+        setTimeout(() => {
+          window.print();
+          // Kembalikan isi printer container ke preview semula jika ada
+          printContainer.innerHTML = typeof currentInvoiceId !== 'undefined' && currentInvoiceId ? generateInvoiceHTML(currentInvoiceId) : '';
+        }, 500);
+      } catch (err) {
+        alert("Gagal memproses cetak massal: " + err.message);
+      }
+    }
+
+    async function downloadSelectedPDF() {
+      if (selectedInvoices.size === 0) {
+        alert('Pilih minimal 1 invoice untuk didownload.');
+        return;
+      }
+
+      const mode = typeof currentMode !== 'undefined' ? currentMode : 'A';
+
+      // Build entries list sama seperti downloadAllPDF tapi hanya yang terpilih
+      let entries = [];
+      if (mode === 'B') {
+        selectedInvoices.forEach(indexStr => {
+          const idx = parseInt(indexStr);
+          const item = invoiceListFlat[idx];
+          if (!item) return;
+          const safeName = item.id.replace(/[\/\\:*?"<>|]/g, '_');
+          entries.push({
+            html: generateInvoiceHTMLSingleRow(item.row, item.isSusulan, item.id),
+            filename: `${String(entries.length + 1).padStart(4, '0')}_${safeName}${item.isSusulan ? '_susulan' : ''}.pdf`
+          });
+        });
+      } else {
+        selectedInvoices.forEach(id => {
+          const safeName = id.replace(/[\/\\:*?"<>|]/g, '_');
+          entries.push({
+            html: generateInvoiceHTML(id),
+            filename: `${String(entries.length + 1).padStart(4, '0')}_${safeName}.pdf`
+          });
+        });
+      }
+
+      const total = entries.length;
+      showLoading('Membuat ZIP...', `0 / ${total} faktur diproses`, true);
+
+      const zip = new JSZip();
+      const pdfOpts = {
+        margin: 0,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+
+      try {
+        for (let i = 0; i < total; i++) {
+          const { html, filename } = entries[i];
+
+          const percent = Math.round((i / total) * 100);
+          document.getElementById('loadingTitle').textContent = `Memproses faktur ${i + 1} dari ${total}...`;
+          setLoadingProgress(percent, `${i + 1} / ${total} — ${filename}`);
+
+          const wrapper = document.createElement('div');
+          wrapper.innerHTML = html;
+          wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;';
+          document.body.appendChild(wrapper);
+
+          const pdfBlob = await html2pdf().set(pdfOpts).from(wrapper).outputPdf('blob');
+
+          document.body.removeChild(wrapper);
+          zip.file(filename, pdfBlob);
+
+          await new Promise(r => setTimeout(r, 0));
+        }
+
+        setLoadingProgress(100, 'Mengemas ZIP...');
+        document.getElementById('loadingTitle').textContent = 'Mengemas file ZIP...';
+        document.getElementById('loadingSubtitle').textContent = 'Sebentar lagi selesai';
+
+        const sheetName = document.getElementById('sheetSelect').value.replace(/[\/\\:*?"<>|]/g, '_');
+        const zipBlob = await zip.generateAsync({
+          type: 'blob',
+          compression: 'DEFLATE',
+          compressionOptions: { level: 6 }
+        });
+
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Faktur_Terpilih_${sheetName}_${total}file.zip`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        showNotif(`✅ ZIP berhasil diunduh (${total} faktur terpilih).`, 'bg-green-700');
+      } catch (err) {
+        showNotif('❌ Gagal membuat ZIP: ' + err.message, 'bg-red');
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // ==========================================
+    // INIT — load from IndexedDB on startup
+    // ==========================================
+    (async () => {
+      // Restore last active mode
+      const savedMode = localStorage.getItem('invoiceMode');
+      if (savedMode && ['A', 'B', 'C'].includes(savedMode)) {
+        currentMode = savedMode;
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.mode === savedMode);
+        });
+      }
+
+      showLoading('Memeriksa data tersimpan...', 'Membuka IndexedDB');
+      await openDB();
+      const saved = await loadFileFromDB();
+      if (saved) {
+        try {
+          showLoading('Memuat file dari cache...', saved.fileName);
+          workbook = XLSX.read(saved.arrayBuffer, { type: 'array', cellFormula: true });
+          updateDBBadge(saved.fileName);
+          initSheetSelector(workbook.SheetNames);
+          // loadSheet calls hideLoading internally via setTimeout
+          setStatus('bg-green-100 text-green-800', `✅ File dimuat dari cache: ${saved.fileName}`);
+          showNotif(`📂 File "${saved.fileName}" dimuat otomatis.`, 'bg-[#1e293b]');
+        } catch (e) {
+          await clearFileFromDB();
+          hideLoading();
+          setStatus('bg-yellow-100 text-yellow-800', '⚠️ Cache rusak, silakan upload ulang.');
+        }
+      } else {
+        hideLoading();
+      }
+    })();
+  </script>
+</body>
+
+</html>

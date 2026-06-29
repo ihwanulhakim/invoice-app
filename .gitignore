@@ -1,0 +1,16 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Tidak perlu push file Excel sample ke repo
+*.xlsx
+*.xlsx#
+*.xls
+*.pdf
+
+Note.md
+*.Note.md

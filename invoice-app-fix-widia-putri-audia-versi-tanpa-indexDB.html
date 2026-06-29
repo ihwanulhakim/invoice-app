@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aplikasi Cetak Invoice - Widia Putri Audia</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            red: { DEFAULT: '#C41E3A', dark: '#9B1528', light: '#F9E8EB' },
+            gray: { 900: '#1A1A2E', 700: '#374151', 500: '#6B7280', 300: '#D1D5DB', 100: '#F3F4F6' },
+            accent: { DEFAULT: '#F59E0B', hover: '#D97706' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @media print {
+      @page { size: A4 portrait; margin: 0mm; }
+      body { margin: 0; background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .page {
+        box-shadow: none !important;
+        padding: 10mm 15mm !important;
+        width: 210mm !important;
+        height: 297mm !important;
+        max-height: 297mm !important;
+        box-sizing: border-box !important;
+        border: none !important;
+        margin: 0 auto !important;
+        page-break-after: always;
+        page-break-inside: avoid;
+        overflow: hidden;
+      }
+      .page:last-child { page-break-after: auto; }
+      .no-print { display: none !important; }
+    }
+    .divider { border-top: 1px solid #1f2937; width: 100%; }
+
+    /* Search styles */
+    #searchInput::placeholder { color: #9CA3AF; }
+    .invoice-item.hidden-by-search { display: none; }
+    #searchClear { transition: opacity 0.15s; }
+    #noSearchResult { display: none; }
+    #noSearchResult.visible { display: block; }
+  </style>
+</head>
+
+<body class="font-sans bg-gray-100 text-gray-700 min-h-screen">
+
+  <div class="bg-[#1e293b] text-white pl-2 pr-8 flex items-center justify-between h-[60px] border-b-[3px] border-red no-print">
+    <h1 class="text-base font-bold tracking-wide">🧾  Aplikasi Cetak Faktur Penjualan Versi 1</h1>
+    <span class="text-xs text-gray-300">Widia Putri Audia</span>
+  </div>
+
+  <div id="notif" class="fixed bottom-6 right-6 px-5 py-3 rounded-lg text-sm font-semibold shadow-xl z-[9999] translate-y-24 opacity-0 transition-all duration-300 text-white"></div>
+
+  <div class="flex h-[calc(100vh-60px)] no-print">
+
+    <div class="w-80 bg-white border-r border-gray-300 flex flex-col overflow-hidden shrink-0">
+
+      <!-- Upload -->
+      <div class="p-4 border-b border-gray-100">
+        <h3 class="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-3">1. Upload File Excel</h3>
+        <div id="uploadZone"
+          class="border-2 border-dashed border-gray-300 rounded-lg p-5 text-center cursor-pointer transition-all duration-200 bg-gray-100 hover:border-red hover:bg-red-light"
+          onclick="document.getElementById('fileInput').click()">
+          <div class="text-3xl mb-2">📂</div>
+          <strong class="text-[13px] text-gray-700 block mb-1">Klik atau Drag & Drop</strong>
+          <p class="text-xs text-gray-500">Format: .xlsx, .xls</p>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" class="hidden" onchange="handleFileUpload(event)">
+        <div id="uploadStatus" class="mt-3"></div>
+      </div>
+
+      <!-- Sheet selector -->
+      <div id="sheetSection" class="p-4 border-b border-gray-100 hidden">
+        <h3 class="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-3">2. Pilih Sheet</h3>
+        <select id="sheetSelect" onchange="loadSheet()"
+          class="w-full p-2 border border-gray-300 rounded-md text-[13px] focus:outline-none focus:border-red bg-white"></select>
+      </div>
+
+      <!-- Search bar — hidden until data loaded -->
+      <div id="searchSection" class="px-3 pt-3 pb-2 border-b border-gray-100 hidden">
+        <h3 class="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Cari Invoice</h3>
+
+        <!-- Dropdown filter -->
+        <select id="searchFilter"
+          onchange="filterInvoices()"
+          class="w-full mb-2 p-1.5 border border-gray-300 rounded-md text-[12px] focus:outline-none focus:border-red bg-white text-gray-700">
+          <option value="invoice">Nomor Faktur Penjualan</option>
+          <option value="nama">Nama Customer</option>
+          <option value="total">Total Harga</option>
+          <option value="item">Jumlah Item</option>
+        </select>
+
+        <!-- Search input with clear button -->
+        <div class="relative">
+          <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[13px] pointer-events-none">🔍</span>
+          <input
+            id="searchInput"
+            type="text"
+            placeholder="Ketik untuk mencari..."
+            oninput="filterInvoices()"
+            class="w-full pl-7 pr-7 py-1.5 border border-gray-300 rounded-md text-[12px] focus:outline-none focus:border-red bg-white"
+          />
+          <button
+            id="searchClear"
+            onclick="clearSearch()"
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-[14px] opacity-0 pointer-events-none"
+            title="Hapus pencarian">✕</button>
+        </div>
+
+        <div id="searchMeta" class="text-[10px] text-gray-400 mt-1 px-0.5"></div>
+      </div>
+
+      <!-- Invoice list header -->
+      <div class="px-4 pt-3 pb-1">
+        <h3 class="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          Daftar Invoice <span id="invCount" class="hidden bg-red text-white rounded-full text-[10px] py-0.5 px-2 font-bold ml-1"></span>
+        </h3>
+      </div>
+
+      <div id="invoiceList" class="flex-1 overflow-y-auto p-2">
+        <div class="text-gray-500 text-[13px] italic p-2">Belum ada data. Upload file terlebih dahulu.</div>
+      </div>
+
+      <!-- No result state -->
+      <div id="noSearchResult" class="text-center py-6 px-4 text-gray-400 text-[12px]">
+        <div class="text-2xl mb-1">🔍</div>
+        Tidak ada invoice yang cocok.
+      </div>
+
+    </div>
+
+    <!-- Main panel -->
+    <div id="mainPanel" class="flex-1 overflow-auto p-6 bg-[#e5e7eb]">
+      <div id="toolbar" class="hidden bg-white border-b border-gray-300 p-3 px-6 items-center flex-wrap gap-3 -mx-6 -mt-6 mb-6">
+        <span id="toolbarTitle" class="text-sm font-bold text-gray-900 mr-2"></span>
+        <div class="flex flex-wrap gap-2">
+          <button class="bg-red hover:bg-red-dark text-white py-2 px-4 rounded-md text-[13px] font-semibold transition" onclick="window.print()">🖨️ Cetak / Print PDF</button>
+          <button class="bg-accent hover:bg-accent-hover text-white py-2 px-4 rounded-md text-[13px] font-semibold transition" onclick="downloadAllPDF()">📥 Print Semua</button>
+        </div>
+      </div>
+
+      <div id="previewArea">
+        <div class="text-center py-20 px-8 text-gray-500">
+          <div class="text-5xl mb-4">🧾</div>
+          <h2 class="text-lg font-semibold text-gray-700 mb-2">Selamat Datang</h2>
+          <p class="text-sm leading-relaxed">Upload file Excel lalu pilih invoice<br>untuk melihat preview faktur.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="printContainer" class="hidden print:block w-full bg-white"></div>
+
+  <script>
+    let workbook = null;
+    let allData = [];
+    let invoiceMap = {};
+    let allColumns = [];
+    let currentInvoiceId = null;
+    // Cache computed totals and customer names per invoice id
+    let invoiceMeta = {};
+
+    // ==========================================
+    // UPLOAD & PARSING EXCEL
+    // ==========================================
+    const uploadZone = document.getElementById('uploadZone');
+    uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('border-red', 'bg-red-light'); });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('border-red', 'bg-red-light'));
+    uploadZone.addEventListener('drop', e => {
+      e.preventDefault(); uploadZone.classList.remove('border-red', 'bg-red-light');
+      if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+    });
+
+    function handleFileUpload(event) {
+      if (event.target.files[0]) processFile(event.target.files[0]);
+    }
+
+    function processFile(file) {
+      setStatus('bg-blue-100 text-blue-800', `📂 Membaca file: ${file.name}...`);
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          workbook = XLSX.read(e.target.result, { type: 'array', cellFormula: true });
+          const sheets = workbook.SheetNames;
+          const sel = document.getElementById('sheetSelect');
+          sel.innerHTML = '';
+          sheets.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s; opt.textContent = s;
+            if (s === 'D.Sample (2)') opt.selected = true;
+            sel.appendChild(opt);
+          });
+          document.getElementById('sheetSection').classList.remove('hidden');
+          setStatus('bg-green-100 text-green-800', `✅ File berhasil dibaca!`);
+          loadSheet();
+        } catch (err) {
+          setStatus('bg-red-100 text-red-800', '❌ Gagal membaca file: ' + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function loadSheet() {
+      if (!workbook) return;
+      const sheetName = document.getElementById('sheetSelect').value;
+      const ws = workbook.Sheets[sheetName];
+      const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (!raw || raw.length === 0) { setStatus('bg-red-100 text-red-800', '❌ Sheet kosong.'); return; }
+      allData = raw;
+      allColumns = Object.keys(raw[0]);
+      buildInvoiceMap();
+      renderInvoiceList();
+      // Show search section
+      document.getElementById('searchSection').classList.remove('hidden');
+      clearSearch();
+      setStatus('bg-green-100 text-green-800', `✅ Data siap (${raw.length} baris)`);
+    }
+
+    function buildInvoiceMap() {
+      invoiceMap = {};
+      invoiceMeta = {};
+      const invoiceKey = allColumns.find(c => c.toLowerCase().includes('invoice') || c === 'Invoice') || allColumns[0];
+      const namaKey = allColumns.find(c => c === 'Nama' || c.toLowerCase() === 'nama');
+
+      allData.forEach(row => {
+        const id = row[invoiceKey] || 'UNKNOWN';
+        if (!invoiceMap[id]) invoiceMap[id] = [];
+        invoiceMap[id].push(row);
+      });
+
+      // Pre-compute meta for search
+      Object.entries(invoiceMap).forEach(([id, rows]) => {
+        let total = 0;
+        rows.forEach(r => {
+          const item = extractAndCalculateRow(r);
+          total += item.dppKomersial + item.ppn;
+        });
+        invoiceMeta[id] = {
+          total,
+          itemCount: rows.length,
+          nama: namaKey ? (rows[0][namaKey] || '') : ''
+        };
+      });
+    }
+
+    function renderInvoiceList() {
+      const list = document.getElementById('invoiceList');
+      const ids = Object.keys(invoiceMap);
+      if (ids.length === 0) return;
+
+      document.getElementById('invCount').textContent = ids.length;
+      document.getElementById('invCount').classList.remove('hidden');
+      document.getElementById('invCount').classList.add('inline-block');
+
+      list.innerHTML = '';
+      ids.forEach(id => {
+        const meta = invoiceMeta[id];
+        const div = document.createElement('div');
+        div.className = `p-2.5 rounded-md cursor-pointer border mb-1 transition-all duration-150 hover:bg-gray-100 hover:border-gray-300 invoice-item ${id === currentInvoiceId ? 'bg-red-light border-red' : 'border-transparent'}`;
+        div.dataset.invoiceId = id;
+        div.dataset.nama = meta.nama.toLowerCase();
+        div.dataset.total = meta.total;
+        div.dataset.itemCount = meta.itemCount;
+
+        div.innerHTML = `
+          <div class="text-[13px] font-bold text-gray-900">${id}</div>
+          <div class="text-[11px] text-gray-500 mt-0.5">${meta.nama} · ${meta.itemCount} item</div>
+          <div class="text-xs font-semibold text-red mt-1">${formatRp(meta.total)}</div>
+        `;
+        div.onclick = () => {
+          document.querySelectorAll('.invoice-item').forEach(el => { el.classList.remove('bg-red-light', 'border-red'); el.classList.add('border-transparent'); });
+          div.classList.add('bg-red-light', 'border-red'); div.classList.remove('border-transparent');
+          renderInvoicePreview(id);
+        };
+        list.appendChild(div);
+      });
+
+      if (!currentInvoiceId) list.querySelector('.invoice-item').click();
+    }
+
+    // ==========================================
+    // SEARCH / FILTER
+    // ==========================================
+    function filterInvoices() {
+      const query = document.getElementById('searchInput').value.trim().toLowerCase();
+      const filter = document.getElementById('searchFilter').value;
+      const clearBtn = document.getElementById('searchClear');
+      const noResult = document.getElementById('noSearchResult');
+      const list = document.getElementById('invoiceList');
+
+      // Show/hide clear button
+      if (query.length > 0) {
+        clearBtn.style.opacity = '1';
+        clearBtn.style.pointerEvents = 'auto';
+      } else {
+        clearBtn.style.opacity = '0';
+        clearBtn.style.pointerEvents = 'none';
+      }
+
+      const items = document.querySelectorAll('.invoice-item');
+      let visibleCount = 0;
+
+      items.forEach(item => {
+        const id = item.dataset.invoiceId;
+        const meta = invoiceMeta[id];
+        let match = true;
+
+        if (query.length > 0) {
+          if (filter === 'invoice') {
+            match = id.toLowerCase().includes(query);
+          } else if (filter === 'nama') {
+            match = item.dataset.nama.includes(query);
+          } else if (filter === 'total') {
+            // Allow searching like "1.000" or "1000" or "5jt"
+            const cleanQuery = query.replace(/[.,\s]/g, '');
+            const totalStr = String(Math.round(meta.total)).replace(/[.,\s]/g, '');
+            match = totalStr.includes(cleanQuery);
+          } else if (filter === 'item') {
+            match = String(meta.itemCount).includes(query);
+          }
+        }
+
+        if (match) {
+          item.classList.remove('hidden-by-search');
+          visibleCount++;
+        } else {
+          item.classList.add('hidden-by-search');
+        }
+      });
+
+      // Update meta label
+      const total = items.length;
+      const meta = document.getElementById('searchMeta');
+      if (query.length > 0) {
+        meta.textContent = `${visibleCount} dari ${total} invoice ditemukan`;
+      } else {
+        meta.textContent = '';
+      }
+
+      // No result state
+      if (visibleCount === 0 && query.length > 0) {
+        noResult.classList.add('visible');
+        list.style.display = 'none';
+      } else {
+        noResult.classList.remove('visible');
+        list.style.display = '';
+      }
+    }
+
+    function clearSearch() {
+      document.getElementById('searchInput').value = '';
+      filterInvoices();
+    }
+
+    // Update placeholder based on selected filter
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('searchFilter').addEventListener('change', function() {
+        const placeholders = {
+          invoice: 'Cari nomor faktur...',
+          nama: 'Cari nama customer...',
+          total: 'Cari total harga (angka)...',
+          item: 'Cari jumlah item...'
+        };
+        document.getElementById('searchInput').placeholder = placeholders[this.value] || 'Ketik untuk mencari...';
+        filterInvoices();
+      });
+    });
+
+    // ==========================================
+    // FUNGSI KALKULASI & RENDER PDF
+    // ==========================================
+    function getValue(row, keywords) {
+      for (let key of Object.keys(row)) {
+        if (keywords.some(kw => key.toLowerCase().includes(kw.toLowerCase()))) return row[key];
+      }
+      return '';
+    }
+
+    function extractAndCalculateRow(row) {
+      let qty = parseNum(getValue(row, ['qty', 'kuantitas', 'jumlah']));
+      let price = parseNum(getValue(row, ['price', 'harga satuan']));
+      let dppKomersial = qty * price;
+      let dppFiskal = dppKomersial * (11 / 12);
+      let ppn = dppFiskal * 0.12;
+      return {
+        itemCode: getValue(row, ['item', 'kode barang']),
+        itemName: getValue(row, ['nama barang']),
+        unit: getValue(row, ['unit']) || 'Ctn',
+        qty, price, dppKomersial, dppFiskal, ppn
+      };
+    }
+
+    function generateInvoiceHTML(invoiceId) {
+      const rows = invoiceMap[invoiceId];
+      if (!rows) return '';
+      const first = rows[0];
+
+      const invoiceNo = getValue(first, ['invoice', 'invoiceid']);
+      const sjNo = getValue(first, ['surat jalan', 'packingslip']);
+      const soNo = getValue(first, ['sales order', 'salesid']);
+      const poNo = getValue(first, ['no po', 'customerref']);
+      const noKend = getValue(first, ['no kendaraan']);
+      const nama = getValue(first, ['nama', 'name']);
+      const alamat = getValue(first, ['alamat']);
+      const npwp = getValue(first, ['npwp']);
+      const tujuanNama = getValue(first, ['tujuh nama pengiriman', 'tujuan']);
+      const tujuanAlamat = getValue(first, ['alamat pengiriman']);
+      const dateStr = formatDate(getValue(first, ['date', 'tanggal', 'invoicedate']));
+
+      let totalDPPKomersial = 0, totalDPPFiskal = 0, totalPPN = 0;
+      let tableRowsHTML = '';
+
+      rows.forEach((row, idx) => {
+        const item = extractAndCalculateRow(row);
+        totalDPPKomersial += item.dppKomersial;
+        totalDPPFiskal += item.dppFiskal;
+        totalPPN += item.ppn;
+        if (item.qty === 0 && !item.itemName) return;
+        tableRowsHTML += `
+          <tr>
+            <td class="border-r border-gray-800 px-2 text-center">${idx + 1}</td>
+            <td class="border-r border-gray-800 px-2">${item.itemCode}</td>
+            <td class="border-r border-gray-800 px-2 truncate">${item.itemName}</td>
+            <td class="border-r border-gray-800 px-2 text-center">${formatNum(item.qty)} ${item.unit}</td>
+            <td class="border-r border-gray-800 px-2 text-right">${formatNum(item.price)}</td>
+            <td class="border-gray-800 px-2 text-right">${formatNum(item.dppKomersial)}</td>
+          </tr>`;
+      });
+
+      const minRows = 9;
+      for (let i = rows.length; i < minRows; i++) {
+        let isLast = i === minRows - 1;
+        let b = isLast ? 'border-b ' : '';
+        tableRowsHTML += `
+          <tr class="h-6">
+            <td class="border-r ${b}border-gray-800 px-2">&nbsp;</td>
+            <td class="border-r ${b}border-gray-800"></td>
+            <td class="border-r ${b}border-gray-800"></td>
+            <td class="border-r ${b}border-gray-800"></td>
+            <td class="border-r ${b}border-gray-800"></td>
+            <td class="${b}border-gray-800"></td>
+          </tr>`;
+      }
+
+      const grandTotal = totalDPPKomersial + totalPPN;
+
+      return `
+        <div class="page bg-white max-w-4xl mx-auto shadow-lg p-8 text-xs text-gray-900">
+          <div class="border border-gray-800">
+            <div class="flex justify-center items-center pb-2">
+              <div class="text-xs leading-tight text-center">
+                <div class="font-bold text-sm">PT Belfoods Indonesia</div>
+                <div>01.638.442.2-062.000</div>
+                <div class="leading-snug">Sequis Tower Lantai 40, Jl Jenderal Sudirman Kav. 71, Senayan, Kebayoran Baru, Kota Adm. Jakarta Selatan</div>
+              </div>
+            </div>
+            <div class="divider"></div>
+            <div class="text-center">
+              <div class="text-xl font-bold tracking-wide underline mb-4">FAKTUR PENJUALAN</div>
+            </div>
+            <div class="px-3 pt-2 pb-1">
+              <div class="grid grid-cols-2 gap-x-6 text-xs mb-4">
+                <div class="space-y-0.5">
+                  <div class="flex gap-2"><span class="w-36">Nomor Faktur Penjualan</span><span>: ${invoiceNo}</span></div>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-x-8 text-xs mb-2">
+                <div class="space-y-0.5">
+                  <div class="flex gap-2"><span class="w-36">Nomor SJ</span><span>: ${sjNo}</span></div>
+                  <div class="flex gap-2"><span class="w-36">Nomor SO</span><span>: ${soNo}</span></div>
+                </div>
+                <div class="space-y-0.5">
+                  <div class="flex gap-2"><span class="w-36">Nomor PO</span><span class="font-semibold truncate">: ${poNo}</span></div>
+                  <div class="flex gap-2"><span>Nomor Kendaraan</span><span>: ${noKend}</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="divider"></div>
+            <div class="font-bold px-3 py-0.5 bg-white border border-gray-800">Pembeli Barang Kena Pajak / Penerima Jasa Kena Pajak</div>
+            <div class="divider"></div>
+            <div class="px-3 py-2 space-y-0.5">
+              <div class="flex gap-2"><span class="w-36 shrink-0">Nama</span><span>: ${nama}</span></div>
+              <div class="flex gap-2 pb-4"><span class="w-36 shrink-0">Alamat</span><span class="leading-snug truncate">: ${alamat}</span></div>
+              <div class="flex gap-2"><span class="w-36 shrink-0">NPWP</span><span>: ${npwp}</span></div>
+              <div class="flex gap-2"><span class="w-36 shrink-0">Tujuan Nama Pengiriman</span><span>: ${tujuanNama}</span></div>
+              <div class="flex gap-2"><span class="w-36 shrink-0">Alamat Pengiriman</span><span class="leading-snug truncate">: ${tujuanAlamat}</span></div>
+            </div>
+            <div class="divider"></div>
+            <table class="w-full text-xs border-collapse">
+              <thead>
+                <tr class="bg-gray-100">
+                  <th colspan="5" class="border border-gray-800 px-2 py-1 text-center font-semibold">Nama Barang Kena Pajak / Jasa Kena Pajak</th>
+                  <th rowspan="2" class="border border-gray-800 px-2 py-1 text-center w-36 font-semibold align-middle">Harga Jual / <s>Penggantian /</s><br /><s>Uang Muka / Termin</s><br />Rp.</th>
+                </tr>
+                <tr class="bg-gray-100">
+                  <th class="border border-gray-800 px-2 text-center w-6 font-semibold">No</th>
+                  <th class="border border-gray-800 px-2 text-center w-18 font-semibold">Kode Barang</th>
+                  <th class="border border-gray-800 px-2 text-center font-semibold">Nama Barang</th>
+                  <th class="border border-gray-800 px-2 text-center w-22 font-semibold">Kuantitas</th>
+                  <th class="border border-gray-800 px-2 text-center w-28 font-semibold">Harga Satuan<br />Rp.</th>
+                </tr>
+              </thead>
+              <tbody>${tableRowsHTML}</tbody>
+            </table>
+            <div class="flex border-gray-800 text-xs"><div class="flex-1 px-2 pb-0.5">Harga Jual<s> / Penggantian / Uang Muka / Termin *</s>)</div><div class="w-36 pr-2 pb-0.5 text-right border-l border-gray-800">${formatNum(totalDPPKomersial)}</div></div>
+            <div class="flex border-gray-800 text-xs"><div class="flex-1 px-2 pb-0.5">Dikurangi Potongan Harga (Objek PPN)</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">0.00</div></div>
+            <div class="flex border-gray-800 text-xs"><div class="flex-1 px-2 pb-0.5">Dikurangi Potongan Harga (Non Objek PPN)</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">0.00</div></div>
+            <div class="flex border-gray-800 text-xs"><div class="flex-1 px-2 pb-0.5">Dikurangi Uang Muka Yang Telah Diterima</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">0.00</div></div>
+            <div class="flex border-gray-800 text-xs"><div class="flex-1 px-2 pb-0.5">Jumlah potongan &amp; / uang muka</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">0.00</div></div>
+            <div class="flex border-gray-800 text-xs"><div class="flex-1 px-2 pb-0.5">DPP Komersial</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">${formatNum(totalDPPKomersial)}</div></div>
+            <div class="flex border-gray-800 text-xs"><div class="flex-1 px-2 pb-0.5">DPP Fiskal</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">${formatNum(totalDPPFiskal)}</div></div>
+            <div class="flex border-gray-800 text-xs"><div class="flex-1 px-2 pb-0.5">PPN = 12 % x DPP Fiskal</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">${formatNum(totalPPN)}</div></div>
+            <div class="flex border-gray-800 text-xs"><div class="flex-1 px-2 pb-0.5">DPP PPN Dibebaskan</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">0.00</div></div>
+            <div class="flex border border-gray-800 text-xs font-bold bg-gray-100"><div class="flex-1 px-2 pb-0.5">Jumlah Yang Harus Dibayar</div><div class="w-36 px-2 pb-0.5 text-right border-l border-gray-800">${formatNum(grandTotal)}</div></div>
+            <div class="flex text-xs border-t border-gray-800 pt-4">
+              <div class="flex-1"></div>
+              <div class="w-56 px-2 flex flex-col items-center text-center border-gray-800">
+                <div>Jakarta, ${dateStr}</div>
+                <div class="h-12"></div>
+                <div class="font-semibold mt-0.5">Accounting Manager</div>
+              </div>
+            </div>
+            <div class="border-gray-800 flex flex-col mt-2">
+              <div class="px-2 border-gray-800">
+                <div class="font-semibold">Syarat Pembayaran</div>
+                <div class="flex gap-2"><span class="w-36 shrink-0">Tgl. Jatuh Tempo</span><span>:</span></div>
+                <div class="flex gap-2"><span class="w-36 shrink-0">Harap ditransfer ke bank</span><span>:</span></div>
+              </div>
+              <div class="px-2 py-1">
+                <div class="font-semibold">Catatan</div>
+                <div class="leading-snug text-xs">1. Keterlambatan pembayaran akan dikenakan denda / penalty sebesar 2 % / bulan terhitung sejak tanggal jatuh tempo.</div>
+                <div class="leading-snug text-xs">2. Pembayaran hanya dapat dilakukan melalui rekening Virtual Account yang tercantum.</div>
+              </div>
+            </div>
+          </div>
+          <div class="flex justify-start text-[10px] px-3"><div>*) Coret yang tidak perlu</div></div>
+          <div class="flex justify-end text-gray-500 font-bold text-md mr-6">1 of 1</div>
+        </div>`;
+    }
+
+    function renderInvoicePreview(invoiceId) {
+      currentInvoiceId = invoiceId;
+      document.getElementById('previewArea').innerHTML = generateInvoiceHTML(invoiceId);
+      document.getElementById('printContainer').innerHTML = generateInvoiceHTML(invoiceId);
+      document.getElementById('toolbar').classList.remove('hidden');
+      document.getElementById('toolbar').classList.add('flex');
+      document.getElementById('toolbarTitle').textContent = `Faktur Penjualan: ${invoiceId}`;
+    }
+
+    function downloadAllPDF() {
+      const ids = Object.keys(invoiceMap);
+      showNotif(`Menyiapkan ${ids.length} halaman invoice...`, 'bg-green-700');
+      let allHtml = '';
+      ids.forEach(id => { allHtml += generateInvoiceHTML(id); });
+      document.getElementById('printContainer').innerHTML = allHtml;
+      setTimeout(() => {
+        window.print();
+        document.getElementById('printContainer').innerHTML = generateInvoiceHTML(currentInvoiceId);
+        showNotif('✅ Selesai mempersiapkan cetakan!', 'bg-green-700');
+      }, 500);
+    }
+
+    // ==========================================
+    // UTILITIES & FORMATTER
+    // ==========================================
+    function parseNum(val) {
+      if (val === undefined || val === null) return 0;
+      if (typeof val === 'number') return val;
+      if (typeof val === 'object') return 0;
+      let str = String(val).trim();
+      if (str === '' || str.includes('#')) return 0;
+      str = str.replace(/[^\d.,-]/g, '');
+      if (str === '') return 0;
+      let lastDot = str.lastIndexOf('.');
+      let lastComma = str.lastIndexOf(',');
+      if (lastComma > lastDot) str = str.replace(/\./g, '').replace(',', '.');
+      else if (lastDot > lastComma) str = str.replace(/,/g, '');
+      else if (lastComma > -1) str = str.replace(',', '.');
+      let res = parseFloat(str);
+      return isNaN(res) ? 0 : res;
+    }
+
+    function formatNum(num) {
+      if (isNaN(num) || num === 0) return '0.00';
+      return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function formatRp(num) {
+      if (isNaN(num) || num === 0) return 'Rp 0,00';
+      return 'Rp ' + num.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function formatDate(val) {
+      if (!val) return new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+      let d;
+      if (typeof val === 'number') d = new Date((val - 25569) * 86400 * 1000);
+      else {
+        d = new Date(val);
+        if (isNaN(d)) {
+          const parts = String(val).split('/');
+          if (parts.length === 3) d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+        }
+      }
+      if (isNaN(d)) return String(val);
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+    }
+
+    function setStatus(classes, msg) {
+      document.getElementById('uploadStatus').innerHTML = `<span class="inline-flex items-center gap-1.5 text-[11px] py-1 px-2.5 rounded-full font-semibold ${classes}">${msg}</span>`;
+    }
+
+    function showNotif(msg, bgClass) {
+      const el = document.getElementById('notif');
+      el.textContent = msg;
+      el.className = `fixed bottom-6 right-6 px-5 py-3 rounded-lg text-sm font-semibold shadow-xl z-[9999] transition-all duration-300 text-white ${bgClass} translate-y-0 opacity-100`;
+      setTimeout(() => {
+        el.className = `fixed bottom-6 right-6 px-5 py-3 rounded-lg text-sm font-semibold shadow-xl z-[9999] transition-all duration-300 text-white ${bgClass} translate-y-24 opacity-0`;
+      }, 3500);
+    }
+  </script>
+</body>
+</html>
