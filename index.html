@@ -14,7 +14,7 @@
   <meta property="og:image"
     content="https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=600&auto=format&fit=crop">
   <meta property="og:url" content="https://ihwanulhakim.github.io/invoice-app/">
-  
+
   <!-- Favicon -->
   <link rel="icon"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧾</text></svg>">
@@ -27,9 +27,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"
     referrerpolicy="no-referrer"></script>
 
-  <!-- Tailwind Play CDN — acceptable for single-file app without build step -->
+  <!-- Tailwind Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    window.tailwind = window.tailwind || {};
     tailwind.config = {
       theme: {
         extend: {
@@ -42,7 +42,6 @@
       }
     }
   </script>
-  <script src="https://cdn.tailwindcss.com"></script>
   <style>
     @media print {
       @page {
@@ -1260,7 +1259,7 @@
         if (!tbody) return;
         tbody.innerHTML = '';
 
-        // Memeriksa variabel mode aplikasi 
+        // Memeriksa variabel mode aplikasi
         const mode = typeof currentMode !== 'undefined' ? currentMode : 'A';
 
         if (mode === 'B') {
