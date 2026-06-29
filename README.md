@@ -4,6 +4,8 @@ Aplikasi berbasis web single-file untuk mencetak & mengunduh faktur penjualan se
 
 **Dibuat oleh:** Ihwanul Hakim
 
+🔗 **Live App:** [https://ihwanulhakim.github.io/invoice-app/](https://ihwanulhakim.github.io/invoice-app/)
+
 ---
 
 ## ✨ Fitur
@@ -12,7 +14,7 @@ Aplikasi berbasis web single-file untuk mencetak & mengunduh faktur penjualan se
 - 💾 **Auto-simpan di browser** — file tersimpan di IndexedDB, tidak hilang saat refresh
 - 🔍 **Pencarian invoice** — cari berdasarkan Nomor Faktur, Nama Customer, Total Harga, atau Jumlah Item
 - 🗂️ **3 Mode tampilan:**
-  - **A — Gabung:** invoice dengan nomor sama digabung jadi 1 faktur
+  - **A — Gabung:** invoice dengan nomor faktur yang sama digabung jadi 1 faktur
   - **B — Pisah:** setiap baris Excel jadi faktur terpisah, item susulan diberi badge
   - **C — Gabung + Label:** digabung, item susulan ditandai label di dalam tabel
 - 🖨️ **Cetak / Print PDF** — print dialog browser untuk invoice aktif

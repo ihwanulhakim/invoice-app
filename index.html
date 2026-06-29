@@ -11,15 +11,21 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="Aplikasi Cetak Invoice - Ihwanul Hakim">
   <meta property="og:description" content="Cetak faktur penjualan otomatis dengan mudah dan cepat.">
-  <meta property="og:image" content="https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=600&auto=format&fit=crop">
-
+  <meta property="og:image"
+    content="https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=600&auto=format&fit=crop">
+  <meta property="og:url" content="https://ihwanulhakim.github.io/invoice-app/">
+  
   <!-- Favicon -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧾</text></svg>">
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧾</text></svg>">
 
   <!-- Libraries -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"
+    referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous"
+    referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"
+    referrerpolicy="no-referrer"></script>
 
   <!-- Tailwind Play CDN — acceptable for single-file app without build step -->
   <script>
@@ -176,7 +182,8 @@
       <!-- Progress bar (hidden by default, shown only for bulk ZIP) -->
       <div id="loadingProgressWrap" class="hidden">
         <div class="w-full bg-white/10 rounded-full h-2 mb-2">
-          <div id="loadingProgressBar" class="bg-red h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+          <div id="loadingProgressBar" class="bg-red h-2 rounded-full transition-all duration-300" style="width:0%">
+          </div>
         </div>
         <div id="loadingProgressText" class="text-white/60 text-[11px]"></div>
       </div>
@@ -847,13 +854,13 @@
     async function downloadAllPDF() {
       const entries = currentMode === 'B'
         ? invoiceListFlat.map(({ row, isSusulan, id }, idx) => ({
-            html: generateInvoiceHTMLSingleRow(row, isSusulan, id),
-            filename: `${String(idx + 1).padStart(4, '0')}_${id.replace(/[\/\\:*?"<>|]/g, '_')}${isSusulan ? '_susulan' : ''}.pdf`
-          }))
+          html: generateInvoiceHTMLSingleRow(row, isSusulan, id),
+          filename: `${String(idx + 1).padStart(4, '0')}_${id.replace(/[\/\\:*?"<>|]/g, '_')}${isSusulan ? '_susulan' : ''}.pdf`
+        }))
         : Object.keys(invoiceMap).map((id, idx) => ({
-            html: generateInvoiceHTML(id),
-            filename: `${String(idx + 1).padStart(4, '0')}_${id.replace(/[\/\\:*?"<>|]/g, '_')}.pdf`
-          }));
+          html: generateInvoiceHTML(id),
+          filename: `${String(idx + 1).padStart(4, '0')}_${id.replace(/[\/\\:*?"<>|]/g, '_')}.pdf`
+        }));
 
       const total = entries.length;
       showLoading('Membuat ZIP...', `0 / ${total} faktur diproses`, true);
